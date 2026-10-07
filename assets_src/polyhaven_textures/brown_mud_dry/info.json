@@ -1,0 +1,48 @@
+{
+ "date_published": 1530836328,
+ "name": "Brown Mud Dry",
+ "old_id": 146,
+ "type": 1,
+ "authors": {
+  "Rob Tuytel": "All"
+ },
+ "dimensions": [
+  1299.996018409729,
+  1299.996018409729
+ ],
+ "categories": [
+  "terrain",
+  "natural",
+  "outdoor",
+  "collection: the_shed"
+ ],
+ "tags": [
+  "mud",
+  "dirt",
+  "stones",
+  "dry",
+  "ground"
+ ],
+ "max_resolution": [
+  8192,
+  8192
+ ],
+ "files_hash": "bc73d5f8aa2cd4217f2f3e911cd9ab6fdbb1a221",
+ "description": "Free 8K texture of dry brown mud with coarse granules and small stones, rough, crumbly surface, dusty highlights and uneven compacted soil.",
+ "category_id": "e0c05e0b-25f0-5141-ad7a-2aa12e149440",
+ "category": "Ground & Terrain/Soil & Mud/Compacted Soil",
+ "collections": [
+  "the_shed"
+ ],
+ "attributes": {
+  "surface_use": "ground",
+  "origin": "natural",
+  "setting": "outdoor",
+  "condition": [
+   "clean"
+  ]
+ },
+ "img_version": "c3462380",
+ "download_count": 128904,
+ "thumbnail_url": "https://cdn.polyhaven.com/asset_img/thumbs/brown_mud_dry.png?width=256&height=256&format=webp&v=c3462380"
+}

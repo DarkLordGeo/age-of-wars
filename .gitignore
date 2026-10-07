@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vercel/
+*.log
+# Large third-party source downloads: re-fetch with assets_src/download_polyhaven.py
+# or from the URLs in docs/ASSET_LICENSES.md (kept locally, not in git).
+assets_src/polyhaven/
+assets_src/opengameart/
+assets_src/_catalog/*.html
+*.blend1

@@ -1,0 +1,63 @@
+{
+ "date_published": 1683763200,
+ "name": "Rocky Trail 02",
+ "categories": [
+  "outdoor",
+  "natural",
+  "dirty",
+  "sand",
+  "floor"
+ ],
+ "type": 1,
+ "staging": null,
+ "tags": [
+  "stones",
+  "earthy",
+  "rugged",
+  "rough",
+  "terrain",
+  "gravelly",
+  "pathway",
+  "gritty",
+  "dusty",
+  "rocky",
+  "outdoors",
+  "dirt",
+  "rocks",
+  "ground",
+  "sand",
+  "gravel",
+  "footprints",
+  "dusty",
+  "dry",
+  "stony",
+  "rocky"
+ ],
+ "authors": {
+  "Amal Kumar": "All"
+ },
+ "info": null,
+ "dimensions": [
+  2000,
+  2000
+ ],
+ "max_resolution": [
+  16384,
+  16384
+ ],
+ "files_hash": "7b9394e3bb60d9c0cfed2631b813c3f37678c62a",
+ "description": "Free 16K texture: rugged, dusty rocky trail with mixed gravel and compacted dirt - gritty stones, fine sand and scattered pebbles on a dry, uneven surface.",
+ "category_id": "dd06ef8e-5807-534b-b7ac-19fb07264599",
+ "category": "Ground & Terrain/Rocky Ground/Rocky Paths & Trails",
+ "attributes": {
+  "surface_use": "ground",
+  "condition": [
+   "weathered"
+  ],
+  "origin": "natural",
+  "setting": "outdoor"
+ },
+ "img_version": "b7f4e08b",
+ "download_count": 106815,
+ "thumbnail_url": "https://cdn.polyhaven.com/asset_img/thumbs/rocky_trail_02.png?width=256&height=256&format=webp&v=b7f4e08b"
+}
