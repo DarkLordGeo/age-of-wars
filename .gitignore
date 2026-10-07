@@ -8,3 +8,6 @@ assets_src/polyhaven/
 assets_src/opengameart/
 assets_src/_catalog/*.html
 *.blend1
+
+.vercel
+.env*
