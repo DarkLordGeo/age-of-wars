@@ -9,8 +9,12 @@ npm run build      # typecheck + production build
 npm test           # headless simulation tests
 ```
 
-Controls: `1`-`3` / buttons queue units (click a queue slot to cancel + refund) · `A`/`D`/drag pans ·
-wheel zooms · `F` toggles front-line follow · `O` overview (both bases) · `?difficulty=easy|normal|hard`.
+Boots into the main menu (over an AI-vs-AI battle). In a match: `1`-`3` or the Menu panel's unit buttons
+queue units (click a queue square to cancel + refund) · `Esc` pause menu. The camera is fixed beside your
+camp (`src/config/camera.ts`). URL options: `?play=easy|normal|hard` skips the menu, `?quality=low|medium|high`.
+
+Music: drop `glorious-morning.mp3` into `public/audio/music/` (see the README there); the game is silent
+without it. Music and sound effects have separate volume sliders in Options.
 
 ## Architecture
 

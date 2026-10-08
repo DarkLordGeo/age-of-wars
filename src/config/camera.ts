@@ -1,29 +1,27 @@
-/** Camera tuning. Angles in degrees, distances in metres. */
+/**
+ * Battlefield camera (Age 1). A fixed shot "standing" just in front of and to the side of the
+ * player's camp: slightly elevated (27 m), looking down ~16° and diagonally across the lane toward the
+ * enemy camp. The player's camp and watchtower are the near-side anchor, the enemy camp sits in
+ * the distance. No player rotation, orbit, pan or zoom.
+ *
+ * World: the lane runs along +X (player base at x = -40, enemy at +40); the camera side is +Z.
+ * Distances in metres, angles in degrees.
+ */
 export const CAMERA = {
-  fov: 38,
-  /** Angle above the ground plane. */
-  elevation: 38,
-  /** Rotation around the vertical axis away from the lane normal; gives the 3/4 diagonal look. */
-  azimuth: 32,
-  /** Camera-to-focus distance. */
-  distance: { min: 22, max: 105, initial: 44 },
-  /** Height of the point the camera looks at. */
-  focusHeight: 1.5,
-  /** How far past the bases the focus point may travel. */
-  panMargin: 6,
+  /** Fixed eye position. */
+  position: { x: -86, y: 27, z: 38 },
+  /** Default look-at point (mid-lane, a little toward the enemy). */
+  target: { x: -10, y: 1.5, z: -4 },
+  /** Vertical FOV at 16:9; narrower screens widen it so the horizontal framing holds. */
+  fov: 40,
+  minHorizontalFov: 66,
 
-  pan: { keySpeed: 28, dragSpeed: 0.0016 },
-  zoomStep: 0.12,
-  /** Exponential smoothing rates (1/s); higher = snappier. */
-  smoothing: { pan: 7, zoom: 6 },
+  /**
+   * The only automatic movement: the look-at point eases a few metres toward the fighting so a
+   * push on either base stays well framed. Small and slow on purpose.
+   */
+  track: { min: -8, max: 10, rate: 0.6, deadzone: 2 },
 
-  follow: {
-    enabledByDefault: true,
-    /** Focus moves toward the front line at this rate (1/s). */
-    rate: 1.6,
-    /** Front-line movement smaller than this (m) is ignored to avoid jitter. */
-    deadzone: 3,
-    /** Seconds follow stays paused after manual panning. */
-    resumeDelay: 3,
-  },
+  /** Main-menu background: same shot with a slow, gentle drift. */
+  menuSway: { yawDeg: 3, heightM: 1.2, period: 26 },
 } as const;

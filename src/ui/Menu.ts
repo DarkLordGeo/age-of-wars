@@ -1,3 +1,4 @@
+import type { Channel } from '../audio/AudioMixer';
 import type { Quality } from '../render/post';
 
 export interface MenuHandlers {
@@ -9,6 +10,8 @@ export interface MenuHandlers {
   onQuit: () => void;
   onQuality: (q: Quality | 'auto') => void;
   getQuality: () => Quality | 'auto';
+  getVolume: (ch: Channel) => number;
+  onVolume: (ch: Channel, v: number) => void;
 }
 
 type Page = 'main' | 'play' | 'how' | 'options' | 'credits' | 'pause';
@@ -85,6 +88,13 @@ export class Menu {
     for (const el of this.root.querySelectorAll<HTMLElement>('[data-go]')) {
       el.addEventListener('click', () => this.act(el.dataset.go!));
     }
+    for (const el of this.root.querySelectorAll<HTMLInputElement>('input[data-vol]')) {
+      el.addEventListener('input', () => {
+        this.h.onVolume(el.dataset.vol as Channel, Number(el.value) / 100);
+        const out = el.parentElement?.querySelector('output');
+        if (out) out.textContent = `${el.value}%`;
+      });
+    }
     this.root.querySelector<HTMLElement>('[data-go]')?.focus();
   }
 
@@ -151,11 +161,11 @@ export class Menu {
           <div class="mtext">
             <p>Destroy the enemy camp before they destroy yours.</p>
             <ul>
-              <li><b>Train units</b> with the cards at the bottom or keys <kbd>1</kbd>-<kbd>3</kbd>. They march down the path and fight on their own.</li>
+              <li><b>Train units</b> from the <b>Menu</b> panel (top right) or with keys <kbd>1</kbd>-<kbd>3</kbd>. They march down the path and fight on their own.</li>
               <li><b>Gold</b> comes in over time and for every enemy you kill. <b>XP</b> from kills unlocks the Archer and the Brute.</li>
-              <li><b>Upgrades</b> on the right make your units, walls and watchtower stronger.</li>
-              <li>Click a unit in the <b>training queue</b> to cancel it and get your gold back.</li>
-              <li><b>Camera:</b> <kbd>A</kbd>/<kbd>D</kbd> or drag to pan, mouse wheel to zoom, <kbd>F</kbd> follow the front, <kbd>O</kbd> overview.</li>
+              <li><b>Upgrades</b> (hammer icon in the Menu panel) make your units, walls and watchtower stronger. The star evolves to the next age.</li>
+              <li>Click a unit in the <b>training queue</b> (top centre) to cancel it and get your gold back.</li>
+              <li>The camera watches from beside your camp and follows the fighting on its own.</li>
               <li><kbd>Esc</kbd> pauses the game.</li>
             </ul>
           </div>
@@ -164,6 +174,14 @@ export class Menu {
         const cur = this.h.getQuality();
         return `
           <div class="title small"><span class="t1">Options</span></div>
+          <div class="mtext vols">
+            ${(['music', 'sfx'] as const)
+              .map((ch) => {
+                const v = Math.round(this.h.getVolume(ch) * 100);
+                return `<label class="vol"><span>${ch === 'music' ? 'Music' : 'Sound effects'}</span><input type="range" min="0" max="100" step="1" value="${v}" data-vol="${ch}"><output>${v}%</output></label>`;
+              })
+              .join('')}
+          </div>
           <div class="mtext"><p class="label">Graphics quality</p></div>
           <div class="mlist">
             ${QUALITIES.map((q) => `<button class="mbtn choice${q.id === cur ? ' on' : ''}" data-go="quality:${q.id}"><b>${q.name}</b><small>${q.blurb}</small></button>`).join('')}

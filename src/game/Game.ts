@@ -1,5 +1,7 @@
 import type { AssetLibrary } from '../assets/AssetLibrary';
-import { bindAudio, PlaceholderSoundBank } from '../audio/AudioHooks';
+import { AudioMixer } from '../audio/AudioMixer';
+import { bindAudio, MixerSoundBank } from '../audio/AudioHooks';
+import { MusicPlayer } from '../audio/MusicPlayer';
 import { GAME } from '../config/game';
 import type { EnqueueResult } from '../sim/types';
 import { GameRenderer, TEAM_TINT } from '../render/GameRenderer';
@@ -34,7 +36,11 @@ export class Game {
   world: World;
   mode: Mode = 'menu';
   readonly bus = new EventBus();
-  readonly sound = new PlaceholderSoundBank();
+  /** Two-channel audio: music and sfx have independent volumes (Options menu). */
+  readonly mixer = new AudioMixer();
+  readonly sound = new MixerSoundBank(this.mixer);
+  readonly music = new MusicPlayer(this.mixer);
+  private matchOverHandled = false;
   private readonly renderer: GameRenderer;
   private readonly hud: Hud;
   private readonly menu: Menu;
@@ -69,11 +75,15 @@ export class Game {
       onAdvanceAge: () => this.world.advanceAge('player'),
       onRestart: () => this.startMatch(this.difficulty),
       onMainMenu: () => this.toMainMenu(),
-      onToggleFollow: () => this.renderer.rig.toggleFollow(),
-      onOverview: () => this.renderer.rig.toggleOverview(),
+      onPause: () => {
+        if (this.mode === 'playing' && this.world.status === 'playing') this.pause();
+      },
     });
     // Card portraits come from the same models the battlefield uses (player colours).
     this.hud.setPortraits(renderPortraits(assets, Object.values(this.world.content.units), TEAM_TINT.player));
+
+    // Decode the gameplay soundtrack in the background so starting a match never stutters.
+    void this.music.preload('age1');
 
     const post = this.renderer.post;
     this.menu = new Menu(document.body, {
@@ -83,6 +93,8 @@ export class Game {
       onQuit: () => this.toMainMenu(),
       onQuality: (q) => post.setQuality(q),
       getQuality: () => post.setting,
+      getVolume: (ch) => this.mixer.getVolume(ch),
+      onVolume: (ch, v) => this.mixer.setVolume(ch, v),
     });
 
     window.addEventListener('keydown', (e) => {
@@ -92,7 +104,10 @@ export class Game {
     });
 
     if (startInMenu) this.toMainMenu();
-    else this.mode = 'playing';
+    else {
+      this.mode = 'playing';
+      void this.music.play('age1');
+    }
   }
 
   start(): void {
@@ -111,6 +126,7 @@ export class Game {
     this.renderer.setWorld(this.world);
     this.renderer.rig.setCinematic(true);
     this.hud.setActive(false);
+    this.music.stop();
     this.menu.openMain();
   }
 
@@ -122,11 +138,15 @@ export class Game {
     this.menu.close();
     this.hud.setActive(true);
     this.mode = 'playing';
+    this.matchOverHandled = false;
+    // Age 1 gameplay music (the match always starts in age 1).
+    void this.music.play('age1');
   }
 
   private pause(): void {
     this.mode = 'paused';
     this.hud.setActive(false);
+    this.music.duck(true);
     this.menu.openPause();
   }
 
@@ -134,6 +154,7 @@ export class Game {
     this.menu.close();
     this.hud.setActive(true);
     this.mode = 'playing';
+    this.music.duck(false);
     this.last = performance.now();
   }
 
@@ -152,6 +173,12 @@ export class Game {
     }
     this.world.drainEvents(this.bus.dispatch);
 
+    // Match over: let the music fade out under the victory/defeat screen.
+    if (this.mode === 'playing' && this.world.status !== 'playing' && !this.matchOverHandled) {
+      this.matchOverHandled = true;
+      this.music.stop(2.5);
+    }
+
     // Background battle: when one side wins (or it drags on), start a fresh one after a short pause.
     if (this.mode === 'menu' && (this.world.status !== 'playing' || this.world.time > ATTRACT_MAX_TIME)) {
       this.attractEndedFor += dt;
@@ -164,8 +191,7 @@ export class Game {
 
     // Paused: keep rendering (fire, wind, clouds still move) but the battle is frozen.
     this.renderer.render(dt, this.mode === 'paused');
-    const rig = this.renderer.rig;
-    if (this.mode === 'playing') this.hud.update(this.world, { follow: rig.followEnabled, overview: rig.overview }, dt);
+    if (this.mode === 'playing') this.hud.update(this.world, dt);
     requestAnimationFrame(this.frame);
   };
 }

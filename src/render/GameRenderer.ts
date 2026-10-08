@@ -1,6 +1,5 @@
 import { ACESFilmicToneMapping, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
-import { GAME } from '../config/game';
 import type { EventBus } from '../game/EventBus';
 import type { Unit } from '../sim/Unit';
 import type { World } from '../sim/World';
@@ -49,7 +48,7 @@ export class GameRenderer {
 
     this.env = buildEnvironment(this.scene, this.assets, this.renderer);
     this.projectileRenderer = new ProjectileRenderer(this.scene);
-    this.rig = new CameraRig(this.renderer.domElement, GAME.baseOffset);
+    this.rig = new CameraRig();
     this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
 
     bus.on('attack', (e) => {

@@ -30,7 +30,16 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
   - Terrain normal maps (world-space, blended by splat weights) and drifting cloud shadows on terrain + grass (`clouds.ts`).
   - HUD restyled (wood/hide/rope, original design): framed unit cards with portraits rendered at boot from the unit models (`src/ui/portraits.ts`), coin costs, hotkeys, lock overlay with XP, portrait queue tokens with radial progress, coin-priced upgrade list. Fonts: IM Fell English SC + Alegreya Sans (Google Fonts).
 
+- 2026-10-08 menu, camera, arena, HUD, music:
+  - Main menu over a blurred AI-vs-AI battle; Esc pause menu; Options (quality, music/sfx volume).
+  - Fixed camera beside the player camp (`src/config/camera.ts`: eye (-86, 27, 38), look-at (-10, 1.5, -4), ~16° down, FOV 40 / min horizontal 66). Look-at eases -8..+10 m toward the front line; no pan/zoom/orbit. Verified: whole player camp + watchtower, lane, enemy camp in frame.
+  - Arena: cliff walls behind the lane and past the enemy camp, boulder bank front-right (cliff scans are open shells, they look wrong side-on), trees/grass/rocks kept inside the walls.
+  - HUD in the classic layout: gold/XP plank (top-left), training bar + 5 queue squares (top-centre), Menu plank with framed icon buttons Units / Upgrades / Evolve / Pause (top-right), vertical base HP bars on the screen edges.
+  - Music system (`src/audio/AudioMixer.ts`, `MusicPlayer.ts`, `src/config/music.ts`): music + sfx channels, preload, seamless loop, fade in/out, duck on pause, saved volumes. Age 1 track "Glorious Morning" by Waterflame is configured at `public/audio/music/glorious-morning.mp3` but **not included** (needs a licensed copy).
+  - Research spec of the original Age 1: `docs/AGE1_SPEC.md`.
+
 ## Next
+- Implement the original Age 1 roster and rules from `docs/AGE1_SPEC.md` (Clubman, Slingshot Man, Dino Rider; Rock Slingshot, Egg Automatic, Primitive Catapult; turret slots; kill-only income).
 - Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
 - Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).
 - Cave entrance assembled from cliff/rock pieces at the back slope.

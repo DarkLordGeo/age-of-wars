@@ -1,147 +1,69 @@
-import { MathUtils, PerspectiveCamera } from 'three';
+import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { CAMERA } from '../config/camera';
 
 const DEG = Math.PI / 180;
 
 /**
- * 3/4 diagonal RTS camera (perspective). The focus point slides along the lane (X axis);
- * pan/zoom are smoothed with exponential damping. Optionally tracks the front line.
+ * Fixed battlefield camera (src/config/camera.ts). The eye never moves during play; the look-at
+ * point eases a few metres along the lane toward the front line so pushes on either base stay
+ * framed. In the main menu the same shot drifts slowly. No user input.
  */
 export class CameraRig {
-  readonly camera = new PerspectiveCamera(CAMERA.fov, 1, 0.5, 700);
-  followEnabled: boolean = CAMERA.follow.enabledByDefault;
-  /** True while zoomed all the way out so both bases are visible. */
-  overview = false;
-  /** Menu background: slow, low, swaying shot that follows the fight; ignores player input. */
-  private cinematic = false;
-  private cineT = 0;
+  readonly camera = new PerspectiveCamera(CAMERA.fov, 16 / 9, 0.5, 700);
+  private readonly eye = new Vector3(CAMERA.position.x, CAMERA.position.y, CAMERA.position.z);
+  private readonly target = new Vector3(CAMERA.target.x, CAMERA.target.y, CAMERA.target.z);
+  /** Current look-at offset along the lane (m), smoothed. */
+  private shift = 0;
+  private shiftGoal = 0;
+  private menu = false;
+  private t = 0;
 
-  private focusX = 0;
-  private targetX = 0;
-  private distance: number = CAMERA.distance.initial;
-  private targetDistance: number = CAMERA.distance.initial;
-  private savedDistance: number = CAMERA.distance.initial;
-  private followPausedFor = 0;
-  private readonly keys = new Set<string>();
-  private dragging = false;
-
-  private readonly limit: number;
-  private readonly sinAz = Math.sin(CAMERA.azimuth * DEG);
-  private readonly cosAz = Math.cos(CAMERA.azimuth * DEG);
-  private readonly sinEl = Math.sin(CAMERA.elevation * DEG);
-  private readonly cosEl = Math.cos(CAMERA.elevation * DEG);
-
-  constructor(dom: HTMLElement, laneHalfLength: number) {
-    this.limit = laneHalfLength + CAMERA.panMargin;
-    window.addEventListener('keydown', (e) => this.keys.add(e.code));
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    dom.addEventListener(
-      'wheel',
-      (e) => {
-        if (this.cinematic) return;
-        this.overview = false;
-        this.setZoom(this.targetDistance * (1 + Math.sign(e.deltaY) * CAMERA.zoomStep));
-      },
-      { passive: true },
-    );
-    dom.addEventListener('pointerdown', () => (this.dragging = true));
-    window.addEventListener('pointerup', () => (this.dragging = false));
-    window.addEventListener('pointermove', (e) => {
-      if (!this.dragging || this.cinematic) return;
-      this.pan(-e.movementX * CAMERA.pan.dragSpeed * this.distance);
-    });
+  /** Jump the look-at offset back to the default framing (new match). */
+  snapTo(_x = 0): void {
+    this.shift = this.shiftGoal = 0;
     this.apply();
   }
 
-  /** Jump (no smoothing) to a lane position. */
-  snapTo(x: number): void {
-    this.focusX = this.targetX = MathUtils.clamp(x, -this.limit, this.limit);
-    this.apply();
-  }
-
-  /** Menu background camera on/off. */
+  /** Main-menu background: same composition with a slow drift. */
   setCinematic(on: boolean): void {
-    this.cinematic = on;
-    this.overview = false;
-    this.followPausedFor = 0;
-    this.followEnabled = on || CAMERA.follow.enabledByDefault;
-    this.targetDistance = on ? 30 : CAMERA.distance.initial;
-    this.distance = this.targetDistance;
-  }
-
-  toggleFollow(): void {
-    this.followEnabled = !this.followEnabled;
-    this.followPausedFor = 0;
-  }
-
-  /** Zoom out to show both bases; call again to return to the previous zoom. */
-  toggleOverview(): void {
-    this.overview = !this.overview;
-    if (this.overview) {
-      this.savedDistance = this.targetDistance;
-      this.targetDistance = CAMERA.distance.max;
-      this.targetX = 0;
-      this.followPausedFor = CAMERA.follow.resumeDelay;
-    } else {
-      this.targetDistance = this.savedDistance;
-    }
+    this.menu = on;
+    this.t = 0;
+    this.snapTo();
   }
 
   resize(width: number, height: number): void {
-    this.camera.aspect = width / height;
+    const aspect = width / Math.max(1, height);
+    this.camera.aspect = aspect;
+    // Keep at least the designed horizontal field so the enemy camp never leaves the frame.
+    const vFromH = (2 * Math.atan(Math.tan((CAMERA.minHorizontalFov * DEG) / 2) / aspect)) / DEG;
+    this.camera.fov = Math.max(CAMERA.fov, vFromH);
     this.camera.updateProjectionMatrix();
-  }
-
-  /** `frontlineX` is the sim's battle position; null when nothing should be tracked. */
-  update(dt: number, frontlineX: number | null): void {
-    if (this.cinematic) {
-      this.cineT += dt;
-    } else {
-      const speed = CAMERA.pan.keySpeed * (this.distance / CAMERA.distance.initial);
-      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) this.pan(-speed * dt);
-      if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) this.pan(speed * dt);
-    }
-
-    this.followPausedFor = Math.max(0, this.followPausedFor - dt);
-    if (this.followEnabled && !this.overview && this.followPausedFor === 0 && frontlineX !== null) {
-      const off = frontlineX - this.targetX;
-      if (Math.abs(off) > CAMERA.follow.deadzone) {
-        const k = 1 - Math.exp(-CAMERA.follow.rate * dt);
-        this.targetX = MathUtils.clamp(this.targetX + off * k, -this.limit, this.limit);
-      }
-    }
-
-    this.focusX += (this.targetX - this.focusX) * (1 - Math.exp(-CAMERA.smoothing.pan * dt));
-    this.distance += (this.targetDistance - this.distance) * (1 - Math.exp(-CAMERA.smoothing.zoom * dt));
     this.apply();
   }
 
-  private pan(dx: number): void {
-    this.overview = false;
-    this.followPausedFor = CAMERA.follow.resumeDelay;
-    this.targetX = MathUtils.clamp(this.targetX + dx, -this.limit, this.limit);
-  }
-
-  private setZoom(d: number): void {
-    this.targetDistance = MathUtils.clamp(d, CAMERA.distance.min, CAMERA.distance.max);
+  /** `frontlineX` is the sim's battle position; null when the lane is empty. */
+  update(dt: number, frontlineX: number | null): void {
+    this.t += dt;
+    const tr = CAMERA.track;
+    if (frontlineX !== null) {
+      const want = MathUtils.clamp(frontlineX - CAMERA.target.x, tr.min, tr.max);
+      if (Math.abs(want - this.shiftGoal) > tr.deadzone) this.shiftGoal = want;
+    } else {
+      this.shiftGoal = 0;
+    }
+    this.shift += (this.shiftGoal - this.shift) * (1 - Math.exp(-tr.rate * dt));
+    this.apply();
   }
 
   private apply(): void {
-    const d = this.distance;
-    let sinAz = this.sinAz;
-    let cosAz = this.cosAz;
-    let sinEl = this.sinEl;
-    let cosEl = this.cosEl;
-    if (this.cinematic) {
-      // lower, slowly swaying shot for the menu background
-      const az = (CAMERA.azimuth + Math.sin(this.cineT * 0.12) * 14) * DEG;
-      const el = (24 + Math.sin(this.cineT * 0.09) * 4) * DEG;
-      sinAz = Math.sin(az);
-      cosAz = Math.cos(az);
-      sinEl = Math.sin(el);
-      cosEl = Math.cos(el);
+    this.camera.position.copy(this.eye);
+    let tx = this.target.x + this.shift;
+    if (this.menu) {
+      const s = CAMERA.menuSway;
+      const phase = (this.t / s.period) * Math.PI * 2;
+      tx += Math.sin(phase) * Math.tan(s.yawDeg * DEG) * 70;
+      this.camera.position.y += Math.sin(phase * 0.7) * s.heightM;
     }
-    this.camera.position.set(this.focusX + d * cosEl * sinAz, d * sinEl, d * cosEl * cosAz);
-    this.camera.lookAt(this.focusX, CAMERA.focusHeight, 0);
+    this.camera.lookAt(tx, this.target.y, this.target.z);
   }
 }

@@ -167,10 +167,10 @@ function addTrees(scene: Scene): void {
   const deadPl: TreePlacement[][] = dead.map(() => []);
   const tint = new Color();
 
-  // Grove centres: mostly behind the lane, denser toward the back slope.
+  // Grove centres: in the strip between the lane and the arena's back wall.
   const groves: Array<{ x: number; z: number; r: number; n: number }> = [];
   for (let i = 0; i < 18; i++) {
-    groves.push({ x: (rng() * 2 - 1) * 170, z: -(LANE_CLEARANCE + 6 + Math.pow(rng(), 0.7) * 85), r: 8 + rng() * 14, n: 8 + Math.floor(rng() * 14) });
+    groves.push({ x: (rng() * 2 - 1) * 95, z: -(LANE_CLEARANCE + 6 + rng() * 10), r: 6 + rng() * 8, n: 6 + Math.floor(rng() * 10) });
   }
   // Flank groves beyond the camps frame the battlefield on both sides.
   for (const sx of [-1, 1]) groves.push({ x: sx * (GAME.baseOffset + 32), z: -6, r: 14, n: 22 });
@@ -227,7 +227,7 @@ function addGrass(scene: Scene): void {
   // Meadow in front of the lane (toward the camera): low, so units stay readable.
   for (let i = 0; i < 1700; i++) tryPlace((rng() * 2 - 1) * 130, LANE_CLEARANCE - 4 + rng() * 34, 0.3 + rng() * 0.3, 0.35);
   // Behind the lane: taller and denser near the trees.
-  for (let i = 0; i < 2600; i++) tryPlace((rng() * 2 - 1) * 150, -(4 + Math.pow(rng(), 1.3) * 70), 0.4 + rng() * 0.55, 0.25);
+  for (let i = 0; i < 2200; i++) tryPlace((rng() * 2 - 1) * 100, -(4 + Math.pow(rng(), 1.3) * 22), 0.4 + rng() * 0.55, 0.25);
   addGrassTufts(scene, 'grass_tuft_green.png', green);
   addGrassTufts(scene, 'grass_tuft_dry.png', dry);
 }
@@ -264,7 +264,7 @@ function addRocks(scene: Scene, assets: AssetLibrary): void {
     const x = (rng() * 2 - 1) * 120;
     const isFront = rng() < 0.25;
     // Front rocks stay small and close to the lane so the foreground reads without hiding units.
-    const z = isFront ? LANE_CLEARANCE + rng() * 5 : -(LANE_CLEARANCE + rng() * 45);
+    const z = isFront ? LANE_CLEARANCE + rng() * 5 : -(LANE_CLEARANCE + rng() * 19);
     if (campDistance(x, z) < CAMP_RADIUS + 1.5) continue;
     const pool = isFront ? front : back;
     const kind = pool[Math.floor(rng() * pool.length)]!;
@@ -325,38 +325,83 @@ const CLIFFS: CliffKind[] = [
 ];
 
 /** A ridge of scaled/rotated cliff sections along the back of the map (one draw call per section type). */
+/** Native size (m) of the boulders used for the front-right rock bank. */
+const BOULDER_SIZE: Record<string, { w: number; h: number }> = {
+  'env.rock.boulder_01': { w: 1.27, h: 1.0 },
+  'env.rock.boulder_02': { w: 2.52, h: 0.86 },
+  'env.rock.boulder_03': { w: 2.41, h: 1.47 },
+  'env.rock.boulder_04': { w: 1.36, h: 0.53 },
+};
+
+/** Native size of each cliff section (m), from the GLBs; used to scale walls to a target height. */
+const CLIFF_SIZE: Record<string, { w: number; h: number }> = {
+  'env.cliff.ridge_02': { w: 20.2, h: 7.2 },
+  'env.cliff.mountainside_01': { w: 10.2, h: 10.5 },
+  'env.cliff.ridge_01': { w: 8.3, h: 5.0 },
+};
+
+/**
+ * Arena walls: the battlefield is a valley closed in by rock so the fixed camera sees the fight,
+ * both camps and the cliffs around them, not an open world. Each wall is a run of cliff sections
+ * along a path, scaled to a height range and sunk into the slope so no base edge shows.
+ *  - back wall behind the lane (the main backdrop),
+ *  - end wall past the enemy camp (closes the far end of the view),
+ *  - front-right wall, far enough out that it frames the shot without hiding the lane,
+ *  - a short wall behind the player camp (seen only in the menu drift).
+ */
+const WALLS: Array<{ from: [number, number]; to: [number, number]; height: [number, number]; face: number; jitter: number; boulders?: boolean }> = [
+  { from: [-100, -31], to: [104, -33], height: [20, 32], face: 0, jitter: 4 },
+  { from: [94, -34], to: [98, 44], height: [26, 36], face: -Math.PI / 2, jitter: 3 },
+  // front-right: far enough out (z 34-42) that rays from the camera to the lane never cross it
+  // (built from closed boulder meshes: the cliff scans are open shells that look wrong side-on)
+  { from: [-6, 34], to: [98, 42], height: [9, 16], face: Math.PI, jitter: 4, boulders: true },
+  { from: [-98, -30], to: [-100, 6], height: [18, 26], face: Math.PI / 2, jitter: 3 },
+];
+
 function addMountains(scene: Scene, assets: AssetLibrary): void {
   const kinds = CLIFFS.filter((k) => assets.hasModel(k.key));
   if (kinds.length === 0) {
     addMountainsProcedural(scene);
     return;
   }
+  const boulders = BACK_ROCKS.filter((k) => assets.hasModel(k.key));
   const rng = createRng(21);
   const byKey = new Map<string, Placement[]>();
   const tint = new Color();
-  const step = 34;
-  for (let i = 0, x = -250; x < 250; i++, x += step) {
-    const kind = kinds[i % kinds.length]!;
-    const s = kind.scale[0] + rng() * (kind.scale[1] - kind.scale[0]);
-    const px = x + (rng() - 0.5) * 14;
-    const pz = -150 - rng() * 28;
-    const v = 0.62 + rng() * 0.2;
-    tint.setRGB(v * 0.94, v * 0.97, v * 1.05);
-    let list = byKey.get(kind.key);
-    if (!list) byKey.set(kind.key, (list = []));
-    // Sunk into the slope so the base never shows; alternate facing for variety.
-    list.push({
-      x: px,
-      y: terrainHeight(px, pz) - 1.2 * s,
-      z: pz,
-      rotY: (i % 2 ? Math.PI : 0) + (rng() - 0.5) * 0.5,
-      scaleX: s,
-      scaleY: s * (0.9 + rng() * 0.5),
-      scaleZ: s,
-      tint: tint.clone(),
-    });
+  let n = 0;
+  for (const wall of WALLS) {
+    const [x0, z0] = wall.from;
+    const [x1, z1] = wall.to;
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    for (let d = 0; d < len; ) {
+      const pool = wall.boulders ? boulders : kinds;
+      if (pool.length === 0) break;
+      const kind = pool[n++ % pool.length]!;
+      const size = CLIFF_SIZE[kind.key] ?? BOULDER_SIZE[kind.key] ?? { w: 15, h: 8 };
+      const h = wall.height[0] + rng() * (wall.height[1] - wall.height[0]);
+      const sc = h / size.h;
+      const t = d / len;
+      const px = x0 + (x1 - x0) * t + (rng() - 0.5) * wall.jitter;
+      const pz = z0 + (z1 - z0) * t + (rng() - 0.5) * wall.jitter;
+      const v = 0.6 + rng() * 0.22;
+      tint.setRGB(v * 0.96, v * 0.97, v * 1.03);
+      let list = byKey.get(kind.key);
+      if (!list) byKey.set(kind.key, (list = []));
+      list.push({
+        x: px,
+        // sunk so the section's base and the slope never leave a gap
+        y: terrainHeight(px, pz) - 0.18 * h,
+        z: pz,
+        rotY: wall.face + (rng() - 0.5) * 0.35, // scans have a back side: keep the face toward the lane
+        scaleX: sc * (0.9 + rng() * 0.25),
+        scaleY: sc,
+        scaleZ: sc,
+        tint: tint.clone(),
+      });
+      d += size.w * sc * (wall.boulders ? 0.55 : 0.62); // overlap neighbours so the wall is continuous
+    }
   }
-  for (const [key, list] of byKey) addInstances(scene, partsOf(assets, key), list, { castShadow: false });
+  for (const [key, list] of byKey) addInstances(scene, partsOf(assets, key), list, { castShadow: true });
 }
 
 function addMountainsProcedural(scene: Scene): void {
@@ -396,9 +441,9 @@ function addGroundCover(scene: Scene, assets: AssetLibrary): void {
     if (parts.length === 0) continue;
     const list: Placement[] = [];
     for (let i = 0; i < c.count; i++) {
-      const x = (rng() * 2 - 1) * 150;
+      const x = (rng() * 2 - 1) * 95;
       const isFront = rng() < c.front;
-      const z = isFront ? LANE_CLEARANCE + 0.5 + rng() * 12 : -(LANE_CLEARANCE + 0.5 + Math.pow(rng(), 0.9) * 75);
+      const z = isFront ? LANE_CLEARANCE + 0.5 + rng() * 12 : -(LANE_CLEARANCE + 0.5 + Math.pow(rng(), 0.9) * 19);
       const s = c.scale[0] + rng() * (c.scale[1] - c.scale[0]);
       if (campDistance(x, z) < CAMP_RADIUS + 1) continue;
       tint.setRGB(1.0 + rng() * 0.35, 1.05 + rng() * 0.3, 0.9 + rng() * 0.3);
@@ -432,7 +477,7 @@ function addDeadwood(scene: Scene, assets: AssetLibrary): void {
     const list: Placement[] = [];
     for (let i = 0; i < d.count; i++) {
       const x = (rng() * 2 - 1) * 130;
-      const z = -(LANE_CLEARANCE + 2 + rng() * 55);
+      const z = -(LANE_CLEARANCE + 2 + rng() * 17);
       const s = d.scale[0] + rng() * (d.scale[1] - d.scale[0]);
       if (campDistance(x, z) < CAMP_RADIUS + 2) continue;
       const v = 0.75 + rng() * 0.25;

@@ -1,3 +1,4 @@
+import type { AudioMixer, BufferLike } from './AudioMixer';
 import type { EventBus } from '../game/EventBus';
 
 export type SoundCue =
@@ -40,4 +41,41 @@ export function bindAudio(bus: EventBus, bank: SoundBank): void {
   bus.on('ageAdvanced', () => bank.play('age_up'));
   bus.on('victory', () => bank.play('victory'));
   bus.on('defeat', () => bank.play('defeat'));
+}
+
+/**
+ * Sound bank on the mixer's sfx channel (separate from music). Cues without a registered sound
+ * are only counted, so gameplay works before any effect files exist. Register effects with
+ * `load(cue, url)` once they are added under public/audio/sfx/.
+ */
+export class MixerSoundBank extends PlaceholderSoundBank {
+  private readonly sounds = new Map<SoundCue, BufferLike>();
+
+  constructor(private readonly mixer: AudioMixer) {
+    super();
+  }
+
+  async load(cue: SoundCue, url: string): Promise<void> {
+    const ctx = this.mixer.context();
+    if (!ctx) return;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.sounds.set(cue, await ctx.decodeAudioData(await res.arrayBuffer()));
+    } catch (err) {
+      console.warn(`[sfx] ${cue}: could not load ${url} (${(err as Error).message})`);
+    }
+  }
+
+  override play(cue: SoundCue): void {
+    super.play(cue);
+    const buffer = this.sounds.get(cue);
+    const ctx = this.mixer.context();
+    const bus = this.mixer.bus('sfx');
+    if (!buffer || !ctx || !bus || ctx.state !== 'running') return;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(bus);
+    src.start();
+  }
 }

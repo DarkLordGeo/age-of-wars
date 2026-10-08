@@ -2,6 +2,7 @@ import { GAME } from '../config/game';
 import type { Content } from '../config/schema';
 import { currentAge, nextAge, unitUnlockXp } from '../sim/progression';
 import type { World } from '../sim/World';
+import { icon, ICONS } from './icons';
 
 export interface HudHandlers {
   onEnqueue: (unitId: string) => void;
@@ -10,14 +11,11 @@ export interface HudHandlers {
   onAdvanceAge: () => void;
   onRestart: () => void;
   onMainMenu: () => void;
-  onToggleFollow: () => void;
-  onOverview: () => void;
+  /** Open the pause menu. */
+  onPause: () => void;
 }
 
-export interface CameraState {
-  follow: boolean;
-  overview: boolean;
-}
+type Row = 'main' | 'units' | 'upgrades';
 
 const REFRESH_HZ = 15;
 
@@ -25,18 +23,27 @@ const setText = (el: HTMLElement, s: string): void => {
   if (el.textContent !== s) el.textContent = s;
 };
 
-/** DOM overlay generated from content data. Reads the World; acts only through handlers. */
+/**
+ * In-game HUD, laid out like the classic lane battler:
+ * - top-left plank: gold and XP;
+ * - top-centre: training progress bar + one square per queue slot (click a filled square to cancel);
+ * - top-right "Menu" plank: framed icon buttons (Units, Upgrades, Evolve, Pause). Units/Upgrades
+ *   swap the row to their buttons with a Back button; hovering shows name and price;
+ * - base health as vertical bars on the left (you) and right (enemy) screen edges.
+ * Reads the World; acts only through handlers. Hidden while a menu is open.
+ */
 export class Hud {
   private readonly q: <T extends HTMLElement>(id: string) => T;
   private readonly unitBtns = new Map<string, HTMLButtonElement>();
-  private portraits: Record<string, string> = {};
-  private readonly upgradeBtns = new Map<string, { btn: HTMLButtonElement; age: number }>();
+  private readonly upgradeBtns = new Map<string, HTMLButtonElement>();
   private readonly slots: HTMLElement[] = [];
   private readonly unitOrder: string[];
+  private readonly upgradeOrder: string[];
+  private portraits: Record<string, string> = {};
   private sinceRefresh = 1;
+  private toastTimer = 0;
   /** False while a menu is open: the HUD is hidden and ignores hotkeys. */
   private active = true;
-  private toastTimer = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -44,84 +51,95 @@ export class Hud {
     handlers: HudHandlers,
   ) {
     this.unitOrder = Object.keys(content.units);
+    this.upgradeOrder = content.ages.flatMap((a) => a.upgrades);
     root.innerHTML = `
-      <div class="hud-top">
-        <div class="hud-base player wood">
-          <div class="hud-label">Your camp <span data-id="pt"></span></div>
-          <div class="bar"><div data-id="pf"></div></div>
-        </div>
-        <div class="hud-center wood lashed">
-          <div data-id="age" class="age"></div>
-          <div class="res"><b><i class="coin"></i><span data-id="gold"></span></b><b class="xp" data-id="xp"></b></div>
-          <div data-id="info" class="dim"></div>
-        </div>
-        <div class="hud-base enemy wood">
-          <div class="hud-label">Enemy camp <span data-id="et"></span></div>
-          <div class="bar"><div data-id="ef"></div></div>
-        </div>
+      <div class="plank purse">
+        <div class="gold"><i class="coin"></i><span data-id="gold"></span></div>
+        <div class="exp">Exp: <b data-id="xp"></b><small data-id="xpnext"></small></div>
+        <div class="age" data-id="age"></div>
       </div>
+      <div class="train">
+        <div class="trainbar"><div data-id="progress"></div><span data-id="training"></span></div>
+        <div class="squares" data-id="queue"></div>
+      </div>
+      <div class="plank menu-plank">
+        <div class="menu-title" data-id="menutitle">Menu</div>
+        <div class="menu-row" data-id="row-main">
+          <button class="ibtn" data-id="cat-units">${ICONS.units}</button>
+          <button class="ibtn" data-id="cat-upgrades">${ICONS.upgrades}</button>
+          <button class="ibtn" data-id="evolve">${ICONS.evolve}</button>
+          <button class="ibtn" data-id="pause">${ICONS.pause}</button>
+        </div>
+        <div class="menu-row" data-id="row-units" hidden></div>
+        <div class="menu-row" data-id="row-upgrades" hidden></div>
+        <div class="tip" data-id="tip"></div>
+      </div>
+      <div class="hpbar player"><div class="fill" data-id="pf"></div><span data-id="pt"></span></div>
+      <div class="hpbar enemy"><div class="fill" data-id="ef"></div><span data-id="et"></span></div>
       <div class="toast" data-id="toast"></div>
-      <div class="panel right wood">
-        <button class="btn small" data-id="advance"></button>
-        <div class="panel-title">Upgrades</div>
-        <div data-id="upgrades" class="upgrades"></div>
-      </div>
-      <div class="hud-bottom">
-        <div class="queue wood" data-id="queue"><span class="label">Training</span></div>
-        <div class="tray wood lashed" data-id="units"></div>
-      </div>
-      <div class="panel left">
-        <button class="btn small" data-id="follow"></button>
-        <button class="btn small" data-id="overview"></button>
-        <div class="hint">A/D or drag: pan · wheel: zoom<br>1-${this.unitOrder.length}: train · click queue slot: cancel</div>
-      </div>
       <div class="overlay" data-id="overlay"><h1 data-id="title"></h1>
         <div class="overlay-actions"><button class="btn" data-id="restart">Play again</button>
         <button class="btn" data-id="mainmenu">Main menu</button></div></div>`;
     this.q = <T extends HTMLElement>(id: string) => root.querySelector<T>(`[data-id="${id}"]`)!;
 
-    const unitsEl = this.q('units');
+    const tip = (el: HTMLElement, text: () => string): void => {
+      el.addEventListener('mouseenter', () => {
+        el.dataset.hover = '1';
+        setText(this.q('tip'), text());
+      });
+      el.addEventListener('mouseleave', () => {
+        delete el.dataset.hover;
+        setText(this.q('tip'), '');
+      });
+    };
+
+    // Category row
+    this.q('cat-units').addEventListener('click', () => this.showRow('units'));
+    this.q('cat-upgrades').addEventListener('click', () => this.showRow('upgrades'));
+    this.q('evolve').addEventListener('click', () => handlers.onAdvanceAge());
+    this.q('pause').addEventListener('click', () => handlers.onPause());
+    tip(this.q('cat-units'), () => 'Train units');
+    tip(this.q('cat-upgrades'), () => 'Upgrades');
+    tip(this.q('pause'), () => 'Menu (Esc)');
+
+    // Units row
+    const unitsRow = this.q('row-units');
     this.unitOrder.forEach((id, i) => {
       const def = content.units[id]!;
       const btn = document.createElement('button');
-      btn.className = 'card';
-      btn.innerHTML = `
-        <span class="frame"><span class="glyph">${def.name[0]}</span><img alt="" hidden>
-          <span class="hotkey">${i + 1}</span><span class="time">${def.spawnTime}s</span>
-          <span class="lock"><i>🔒</i><span data-l></span></span></span>
-        <span class="name">${def.name}</span>
-        <span class="cost"><i class="coin"></i>${def.cost}</span>`;
+      btn.className = 'ibtn unit';
+      btn.innerHTML = `<span class="glyph">${def.name[0]}</span><img alt="" hidden><span class="hk">${i + 1}</span><span class="lock">🔒</span>`;
       btn.addEventListener('click', () => handlers.onEnqueue(id));
-      unitsEl.appendChild(btn);
+      tip(btn, () => this.unitTip(id));
+      unitsRow.appendChild(btn);
       this.unitBtns.set(id, btn);
-      btn.dataset.hotkey = String(i + 1);
     });
+    unitsRow.appendChild(this.backButton(tip));
 
+    // Upgrades row
+    const upRow = this.q('row-upgrades');
+    for (const id of this.upgradeOrder) {
+      const btn = document.createElement('button');
+      btn.className = 'ibtn upgrade';
+      btn.innerHTML = `${icon(id)}<span class="owned">✓</span>`;
+      btn.addEventListener('click', () => handlers.onUpgrade(id));
+      tip(btn, () => this.upgradeTip(id));
+      upRow.appendChild(btn);
+      this.upgradeBtns.set(id, btn);
+    }
+    upRow.appendChild(this.backButton(tip));
+
+    // Training queue squares
     const queueEl = this.q('queue');
     for (let i = 0; i < GAME.economy.queueSize; i++) {
       const slot = document.createElement('div');
-      slot.className = 'slot';
-      slot.innerHTML = '<img alt="" hidden><i></i>';
+      slot.className = 'sq';
+      slot.innerHTML = '<img alt="" hidden>';
       slot.addEventListener('click', () => handlers.onCancel(i));
       queueEl.appendChild(slot);
       this.slots.push(slot);
     }
 
-    const upEl = this.q('upgrades');
-    content.ages.forEach((age, ageIndex) => {
-      for (const id of age.upgrades) {
-        const btn = document.createElement('button');
-        btn.className = 'btn small upgrade';
-        btn.innerHTML = '<span></span><b></b>';
-        btn.addEventListener('click', () => handlers.onUpgrade(id));
-        upEl.appendChild(btn);
-        this.upgradeBtns.set(id, { btn, age: ageIndex });
-      }
-    });
-
-    this.q('advance').addEventListener('click', () => handlers.onAdvanceAge());
-    this.q('follow').addEventListener('click', () => handlers.onToggleFollow());
-    this.q('overview').addEventListener('click', () => handlers.onOverview());
     this.q('restart').addEventListener('click', () => handlers.onRestart());
     this.q('mainmenu').addEventListener('click', () => handlers.onMainMenu());
 
@@ -130,9 +148,36 @@ export class Hud {
       const digit = /^Digit([1-9])$/.exec(e.code);
       const id = digit ? this.unitOrder[Number(digit[1]) - 1] : undefined;
       if (id) handlers.onEnqueue(id);
-      else if (e.code === 'KeyF') handlers.onToggleFollow();
-      else if (e.code === 'KeyO') handlers.onOverview();
     });
+    this.showRow('units');
+  }
+
+  private backButton(tip: (el: HTMLElement, text: () => string) => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = 'ibtn back';
+    b.innerHTML = ICONS.back;
+    b.addEventListener('click', () => this.showRow('main'));
+    tip(b, () => 'Back');
+    return b;
+  }
+
+  private showRow(row: Row): void {
+    this.q('row-main').hidden = row !== 'main';
+    this.q('row-units').hidden = row !== 'units';
+    this.q('row-upgrades').hidden = row !== 'upgrades';
+    setText(this.q('menutitle'), row === 'units' ? 'Units' : row === 'upgrades' ? 'Upgrades' : 'Menu');
+    setText(this.q('tip'), '');
+    this.sinceRefresh = 1;
+  }
+
+  private unitTip(id: string): string {
+    const def = this.content.units[id]!;
+    return `${def.name} - ${def.cost} gold, ${def.spawnTime}s`;
+  }
+
+  private upgradeTip(id: string): string {
+    const up = this.content.upgrades[id]!;
+    return `${up.name} - ${up.cost} gold: ${up.description}`;
   }
 
   /** Show/hide the HUD (hidden while the main or pause menu is open). */
@@ -160,7 +205,7 @@ export class Hud {
   }
 
   /** `dt` is real elapsed seconds; DOM is refreshed at REFRESH_HZ and only where text changed. */
-  update(world: World, cam: CameraState, dt: number): void {
+  update(world: World, dt: number): void {
     this.toastTimer = Math.max(0, this.toastTimer - dt);
     if (this.toastTimer === 0) setText(this.q('toast'), '');
     this.sinceRefresh += dt;
@@ -170,67 +215,54 @@ export class Hud {
     const c = this.content;
     const me = world.teams.player;
     const { player, enemy } = world.bases;
-
-    this.q('pf').style.width = `${(player.health / player.maxHealth) * 100}%`;
-    this.q('ef').style.width = `${(enemy.health / enemy.maxHealth) * 100}%`;
-    setText(this.q('pt'), `${Math.ceil(player.health)} / ${player.maxHealth}`);
-    setText(this.q('et'), `${Math.ceil(enemy.health)} / ${enemy.maxHealth}`);
-
-    const age = currentAge(c, me);
-    const next = nextAge(c, me);
-    setText(this.q('age'), age.name);
-    setText(this.q('gold'), String(Math.floor(me.gold)));
-    setText(this.q('xp'), `XP ${Math.floor(me.xp)}` + (next ? ` / ${next.xpRequired}` : ''));
-    setText(this.q('info'), `Units ${world.alive.player.length} vs ${world.alive.enemy.length}  ·  ${Math.floor(world.time)}s`);
-
     const playing = world.status === 'playing';
-    this.unitOrder.forEach((id) => {
-      const def = c.units[id]!;
-      const btn = this.unitBtns.get(id)!;
-      const unlockXp = unitUnlockXp(c, me, id);
-      const unlocked = world.unitUnlocked('player', id);
-      btn.classList.toggle('locked', !unlocked);
-      btn.classList.toggle('poor', unlocked && me.gold < def.cost);
-      setText(btn.querySelector<HTMLElement>('[data-l]')!, `${unlockXp ?? '?'} XP`);
-      btn.title = unlocked ? `${def.name}: ${def.cost} gold, ${def.spawnTime}s to train` : `${def.name}: unlocks at ${unlockXp ?? '?'} XP`;
-      btn.disabled = !playing || !unlocked || me.gold < def.cost || me.queue.length >= GAME.economy.queueSize;
-    });
 
+    // Purse
+    const next = nextAge(c, me);
+    setText(this.q('gold'), String(Math.floor(me.gold)));
+    setText(this.q('xp'), String(Math.floor(me.xp)));
+    setText(this.q('xpnext'), next ? ` / ${next.xpRequired}` : '');
+    setText(this.q('age'), currentAge(c, me).name);
+
+    // Base health (vertical bars)
+    this.q('pf').style.height = `${Math.max(0, player.health / player.maxHealth) * 100}%`;
+    this.q('ef').style.height = `${Math.max(0, enemy.health / enemy.maxHealth) * 100}%`;
+    setText(this.q('pt'), String(Math.max(0, Math.ceil(player.health))));
+    setText(this.q('et'), String(Math.max(0, Math.ceil(enemy.health))));
+
+    // Training bar + queue squares
+    const head = me.queue[0];
+    this.q('progress').style.width = head ? `${(1 - head.remaining / head.total) * 100}%` : '0%';
+    setText(this.q('training'), head ? `Training ${c.units[head.defId]!.name}` : '');
     this.slots.forEach((slot, i) => {
       const item = me.queue[i];
       const img = slot.firstElementChild as HTMLImageElement;
-      const prog = slot.lastElementChild as HTMLElement;
       const src = item ? this.portraits[item.defId] : undefined;
       if (src && img.getAttribute('src') !== src) img.src = src;
       img.hidden = !src;
-      slot.title = item ? `${c.units[item.defId]!.name} (click to cancel)` : '';
       slot.classList.toggle('filled', !!item);
-      // first slot: radial progress; waiting slots stay dimmed
-      const p = !item ? 100 : i === 0 ? (1 - item.remaining / item.total) * 100 : 0;
-      prog.style.setProperty('--p', `${p}%`);
+      slot.title = item ? `${c.units[item.defId]!.name} (click to cancel)` : '';
     });
 
-    const advance = this.q<HTMLButtonElement>('advance');
-    setText(advance, next ? `Advance to ${next.name} (${next.xpRequired} XP)` : 'Max age reached');
-    advance.disabled = !world.canAdvanceAge('player');
+    // Menu buttons
+    const evolve = this.q<HTMLButtonElement>('evolve');
+    evolve.disabled = !world.canAdvanceAge('player');
+    evolve.title = next ? `Evolve to ${next.name} (${next.xpRequired} XP)` : 'Final age reached';
 
-    for (const [id, { btn, age: ageIndex }] of this.upgradeBtns) {
+    for (const [id, btn] of this.unitBtns) {
+      const def = c.units[id]!;
+      const unlocked = world.unitUnlocked('player', id);
+      btn.classList.toggle('locked', !unlocked);
+      btn.classList.toggle('poor', unlocked && me.gold < def.cost);
+      btn.disabled = !playing || !unlocked || me.gold < def.cost || me.queue.length >= GAME.economy.queueSize;
+      btn.title = unlocked ? '' : `${def.name}: unlocks at ${unitUnlockXp(c, me, id) ?? '?'} XP`;
+    }
+    for (const [id, btn] of this.upgradeBtns) {
       const up = c.upgrades[id]!;
-      btn.hidden = ageIndex > me.ageIndex;
       const owned = me.upgrades.has(id);
-      setText(btn.firstElementChild as HTMLElement, owned ? `✓ ${up.name}` : up.name);
-      const price = btn.lastElementChild as HTMLElement;
-      if (owned) setText(price, '');
-      else if (price.dataset.cost !== String(up.cost)) {
-        price.dataset.cost = String(up.cost);
-        price.innerHTML = `<i class="coin"></i>${up.cost}`;
-      }
-      btn.title = up.description;
+      btn.classList.toggle('owned', owned);
       btn.disabled = !playing || owned || me.gold < up.cost;
     }
-
-    setText(this.q('follow'), `Follow front [F]: ${cam.follow ? 'on' : 'off'}`);
-    setText(this.q('overview'), `Overview [O]: ${cam.overview ? 'on' : 'off'}`);
 
     const overlay = this.q('overlay');
     overlay.classList.toggle('show', !playing);
