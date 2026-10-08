@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a new mechanic, content or improvement.
+labels: [enhancement]
+projects: [DarkLordGeo/2]
+body:
+  - type: markdown
+    attributes:
+      value: Age 1 (Stone Age) is the current scope. Later ages go to the "M8 — Future Expansion" milestone.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing or frustrating today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: gameplay
+    attributes:
+      label: Gameplay impact
+      description: Balance, pacing, readability, performance, or faithfulness to the original Age of War (docs/AGE1_SPEC.md).

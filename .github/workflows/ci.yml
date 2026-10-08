@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Local env files and machine settings must never be committed (.gitignore covers them,
+      # this catches a force-add).
+      - name: No env or local settings files
+        run: |
+          bad=$(git ls-files | grep -E '(^|/)\.env($|\.)|(^|/)\.vercel/|settings\.local\.json$|__pycache__/|\.pyc$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::These files must not be committed:"; echo "$bad"; exit 1
+          fi
+
+      # GitHub rejects files over 100 MB. Large 3D assets are legitimate, so only warn from 25 MB
+      # and fail from 90 MB.
+      - name: File sizes
+        run: |
+          fail=0
+          while IFS= read -r -d '' f; do
+            size=$(stat -c %s "$f")
+            if [ "$size" -gt $((90 * 1024 * 1024)) ]; then
+              echo "::error file=$f::$f is $((size / 1024 / 1024)) MB (GitHub limit is 100 MB)"; fail=1
+            elif [ "$size" -gt $((25 * 1024 * 1024)) ]; then
+              echo "::warning file=$f::$f is $((size / 1024 / 1024)) MB"
+            fi
+          done < <(git ls-files -z)
+          exit $fail

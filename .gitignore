@@ -11,3 +11,20 @@ assets_src/_catalog/*.html
 
 .vercel
 .env*
+
+# Local machine files
+.claude/settings.local.json
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# Python bytecode (assets_src/pipeline scripts)
+__pycache__/
+*.pyc
+
+# Test / tooling output
+coverage/
+test-results/

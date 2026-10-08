@@ -26,9 +26,11 @@ Repo `DarkLordGeo/age-of-wars` · live https://age-of-wars.vercel.app
 - Dev server: `npm run dev` (port 5173, `.claude/launch.json` name `dev`)
 - GLB check: `scripts/validate-glb.mts`
 
-## Commits and deployment
-- Every push to `main` deploys to production on Vercel. Commit and push only when the session's instructions allow it. Otherwise leave the changes uncommitted and say so.
-- Commit messages use the `age1: <what changed>` style and reference the issue with `Refs #N`. Close issues by hand after verification, not with `Closes #N` in the commit.
+## Commits, PRs and deployment
+- Every push to `main` deploys to production on Vercel, and every PR gets a Vercel preview deployment.
+- Flow: work on a branch (naming in `CONTRIBUTING.md`), then open a PR. CI (`.github/workflows/ci.yml`: typecheck, tests, build, hygiene) must pass before merging. Commit and push only when the session's instructions allow it; otherwise leave the changes uncommitted and say so.
+- Commit messages use the `age1: <what changed>` style and reference the issue with `Refs #N`. Close issues by hand after verification, not with `Closes #N`.
+- Other automation: CodeQL, Dependabot (npm weekly, Actions monthly), and a GitHub Release when a `v*.*.*` tag is pushed. Don't add deploy workflows; Vercel's Git integration handles deployment.
 - Cloud sessions can't open `*.vercel.app`, so the live site has to be checked in a real browser.
 
 ## Architecture (stable facts)
