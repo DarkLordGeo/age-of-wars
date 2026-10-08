@@ -41,20 +41,22 @@
       .lashed::before { left: 14px; } .lashed::after { right: 14px; }
 
       /* ---- in-game HUD (classic layout) ---- */
+      /* One top row: purse | training (flexible, centred) | menu. Nothing can overlap. */
+      .topbar { position: fixed; top: 10px; left: 16px; right: 16px; display: flex; align-items: flex-start; gap: 16px; }
       .plank {
-        position: fixed; top: 0;
+        position: relative; flex: none;
         background:
           repeating-linear-gradient(180deg, rgba(0,0,0,.08) 0 1px, transparent 1px 11px),
           repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 2px, transparent 2px 23px),
           linear-gradient(180deg, #d9b47a, #b88a4e 70%, #9a6f3a);
-        border: 3px solid #4a2c12; border-top: 0; color: var(--ink); text-shadow: 0 1px 0 rgba(255,235,200,.5);
+        border: 3px solid #4a2c12; color: var(--ink); text-shadow: 0 1px 0 rgba(255,235,200,.5);
         box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 4px 10px rgba(0,0,0,.45);
       }
       .plank::after { /* nailed corner */
         content: ''; position: absolute; bottom: 6px; width: 9px; height: 9px; border-radius: 50%;
         background: radial-gradient(circle at 35% 35%, #d6d0c4, #5d5a54); box-shadow: 0 1px 2px rgba(0,0,0,.6);
       }
-      .purse { left: 18px; width: 230px; padding: 10px 16px 14px; border-radius: 0 0 8px 8px; }
+      .purse { width: 220px; padding: 9px 16px 14px; border-radius: 8px; }
       .purse::after { right: 8px; }
       .purse .gold { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 26px; color: #5a3b06; }
       .purse .gold .coin { width: 22px; height: 22px; }
@@ -64,19 +66,19 @@
       .purse .age { font-family: var(--display); font-size: 14px; opacity: .85; margin-top: 2px; }
       .coin { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b8, var(--gold) 45%, var(--gold-dk)); box-shadow: 0 0 0 1px #5a3a08, 0 1px 2px rgba(0,0,0,.6); }
 
-      .train { position: fixed; top: 12px; left: 268px; right: 470px; display: flex; gap: 8px; align-items: center; }
-      .trainbar { position: relative; flex: 1; height: 18px; border: 2px solid #18324f; background: rgba(10,25,45,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+      .train { flex: 1 1 auto; min-width: 0; max-width: 560px; margin: 6px auto 0; display: flex; gap: 8px; align-items: center; }
+      .trainbar { position: relative; flex: 1; min-width: 60px; height: 18px; border: 2px solid #18324f; background: rgba(10,25,45,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
       .trainbar > div { height: 100%; width: 0; background: linear-gradient(180deg, #8fd0ff, #2f86d6); transition: width .1s linear; }
       .trainbar span { position: absolute; inset: 0; font-size: 12px; font-weight: 800; line-height: 18px; text-align: center; color: #fff; text-shadow: 0 1px 2px #000; }
-      .squares { display: flex; gap: 4px; }
+      .squares { display: flex; gap: 4px; flex: none; }
       .sq { position: relative; width: 24px; height: 24px; border: 2px solid #18324f; background: rgba(10,25,45,.45); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); pointer-events: auto; overflow: hidden; }
       .sq.filled { background: #2c3e57; cursor: pointer; border-color: #f0c14b; }
       .sq img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
       .sq.filled:hover::after { content: '×'; position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #fff; background: rgba(150,20,10,.6); }
 
-      .menu-plank { right: 18px; width: 420px; padding: 6px 14px 26px; border-radius: 0 0 8px 8px; }
+      .menu-plank { width: max-content; min-width: 240px; max-width: calc(100vw - 32px); padding: 6px 14px 26px; border-radius: 8px; }
       .menu-plank::after { left: 8px; }
-      .menu-title { font-family: var(--display); font-size: 22px; color: #f7d23b; text-shadow: 0 2px 0 #5a3204, 0 0 6px rgba(0,0,0,.4); margin: 0 0 4px 4px; }
+      .menu-title { font-family: var(--display); font-size: 20px; line-height: 1.2; color: #f7d23b; text-shadow: 0 2px 0 #5a3204, 0 0 6px rgba(0,0,0,.4); margin: 0 0 4px 4px; }
       .menu-row { display: flex; gap: 9px; flex-wrap: wrap; }
       .menu-row[hidden] { display: none; }
       .ibtn {
@@ -110,10 +112,17 @@
       .tip { position: absolute; left: 14px; right: 14px; bottom: 5px; font-size: 13px; font-weight: 800; color: #3b2208; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       .hpbar { position: fixed; top: 34%; width: 22px; height: 36%; border: 2px solid #1a0f06; background: rgba(20,8,6,.55); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
-      .hpbar.player { left: 14px; } .hpbar.enemy { right: 14px; }
+      .hpbar.player { left: 16px; } .hpbar.enemy { right: 16px; }
       .hpbar .fill { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, #e4483b, #b5170f); transition: height .15s linear; }
-      .hpbar span { position: absolute; top: -2px; font-weight: 800; font-size: 18px; color: #c4271c; text-shadow: 0 1px 2px rgba(0,0,0,.6), 0 0 2px #fff; }
-      .hpbar.player span { left: 30px; } .hpbar.enemy span { right: 30px; }
+      .hpbar span { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); font-weight: 800; font-size: 15px; color: #fff; text-shadow: 0 0 3px #000, 0 1px 2px #000; white-space: nowrap; }
+      @media (max-width: 900px) {
+        .topbar { flex-wrap: wrap; gap: 8px; }
+        .train { order: 3; flex-basis: 100%; max-width: none; margin: 0; }
+        .menu-plank { margin-left: auto; }
+        .ibtn { width: 48px; height: 48px; padding: 4px; }
+        .ibtn::before { box-shadow: 0 0 0 1px #5a0e08, 44px 0 0 0 #c4271c, 0 44px 0 0 #c4271c, 44px 44px 0 0 #c4271c; }
+        .purse { width: auto; }
+      }
       .toast { position: fixed; top: 150px; left: 0; right: 0; text-align: center; font-family: var(--display); font-size: 20px; color: #ffd36b; }
 
       /* buttons + side panels */

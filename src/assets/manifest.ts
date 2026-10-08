@@ -32,13 +32,13 @@ export function createAssetLibrary(): AssetLibrary {
     decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.25 }),
   });
   lib.register('unit.dino', { placeholder: createDinoRider });
-  // Imported stone hut, placed inside each camp (falls back to a thatched hut when missing).
+  // The base is Lasha's stone cave (Rodin); without it the procedural camp is the fallback.
   lib.register('prop.stone_hut', { url: '/models/stone_hut.glb', placeholder: () => new Group() });
   lib.register('base.keep', {
     placeholder: (tint) =>
       createSettlement(tint, {
         variant: tint % 2,
-        building: lib.hasModel('prop.stone_hut') ? lib.instantiate('prop.stone_hut', tint) : undefined,
+        cave: lib.hasModel('prop.stone_hut') ? lib.instantiate('prop.stone_hut', tint) : undefined,
       }),
   });
   lib.register('turret.rock_slingshot', { placeholder: () => createRockSlingshot() });

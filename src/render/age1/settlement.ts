@@ -34,10 +34,11 @@ export interface SettlementOptions {
   /** Disable particle effects (tests / headless). */
   fx?: boolean;
   /**
-   * A ready-made building (e.g. the imported stone hut) to stand in place of the first small
-   * hut. It is scaled to that hut's footprint, sat on the ground and turned to face the lane.
+   * The imported stone cave (Rodin model). When given, it IS the base: no palisade or huts,
+   * just the cave (scaled up, mouth turned toward the lane and the camera), a campfire in
+   * front of it and the team banner.
    */
-  building?: Object3D;
+  cave?: Object3D;
 }
 
 export const SETTLEMENT = {
@@ -56,6 +57,7 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   const b = new PieceBuilder();
   const keepClear = opts.keepClear ?? [SETTLEMENT.turretClear];
 
+  if (opts.cave) return createCaveBase(tint, opts.cave, opts, rnd);
   buildPalisade(b, rnd, keepClear);
 
   // Great hut (the "keep": what attackers hit) and smaller huts, all behind/around the centre.
@@ -64,11 +66,7 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   const huts = variant % 2 === 0
     ? [[-8.2, -4.6, 2.2], [-3.4, -8.0, 2.0], [2.8, -7.2, 1.8]]
     : [[-8.6, -3.2, 2.0], [-4.6, -8.2, 2.3], [2.2, -7.6, 1.7]];
-  huts.forEach(([x, z, r], i) => {
-    if (i === 0 && opts.building) return;
-    hut(b, rnd, x!, z!, r!, 1.5 + rnd() * 0.3, r! * 1.15 + 0.6);
-  });
-  const slot = huts[0]!;
+  for (const [x, z, r] of huts) hut(b, rnd, x!, z!, r!, 1.5 + rnd() * 0.3, r! * 1.15 + 0.6);
 
   tent(b, rnd, variant % 2 === 0 ? -9.4 : -9.0, variant % 2 === 0 ? 4.4 : 3.6, 2.0, 3.6);
   woodPile(b, rnd, 3.4, -4.6, variant % 2 === 0 ? 0.25 : -0.3);
@@ -78,17 +76,6 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   campfireStructure(b, rnd, fireAt.x, fireAt.z);
 
   const group = b.build();
-  if (opts.building) {
-    const bld = opts.building;
-    bld.rotation.y = -Math.PI / 2; // source faces +Z; turn the doorway toward the lane (+X)
-    bld.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(bld);
-    const span = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
-    const k = (slot[2]! * 2.5) / span;
-    bld.scale.multiplyScalar(k);
-    bld.position.set(slot[0]!, -box.min.y * k - 0.05, slot[1]!);
-    group.add(bld);
-  }
   group.name = 'Settlement';
 
   // TeamColor elements are separate meshes so AssetLibrary-style tinting is per base.
@@ -111,6 +98,49 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
 }
 
 // ------------------------------------------------------------------------------------ pieces
+
+export const CAVE_BASE = {
+  /** Cave height (m); the source model is scaled uniformly to it. */
+  height: 10.5,
+  /** Cave centre (local, base space) and turn: the mouth (source -X side) faces lane + camera. */
+  x: -3,
+  z: -3.5,
+  turnY: (3 * Math.PI) / 4,
+  fire: { x: 4.2, z: 4.6 },
+  banner: { x: 1.5, z: -9.5, h: 13 },
+} as const;
+
+/** The base as a single big cave (see SettlementOptions.cave). */
+function createCaveBase(tint: number, cave: Object3D, opts: SettlementOptions, rnd: () => number): Group {
+  const group = new Group();
+  group.name = 'CaveBase';
+  const C = CAVE_BASE;
+  cave.rotation.y = C.turnY;
+  cave.updateMatrixWorld(true);
+  const box = new Box3().setFromObject(cave);
+  const k = C.height / (box.max.y - box.min.y);
+  cave.scale.multiplyScalar(k);
+  const cx = ((box.min.x + box.max.x) / 2) * k;
+  const cz = ((box.min.z + box.max.z) / 2) * k;
+  cave.position.set(C.x - cx, -box.min.y * k - 0.1, C.z - cz);
+  group.add(cave);
+
+  const b = new PieceBuilder();
+  campfireStructure(b, rnd, C.fire.x, C.fire.z);
+  woodPile(b, rnd, C.fire.x - 3.2, C.fire.z + 1.2, 0.4);
+  group.add(b.build());
+  const banner = bannerPole(tint, C.banner.x, C.banner.z, C.banner.h);
+  group.add(banner.root);
+  const fire = opts.fx === false ? null : new FireFx({ x: C.fire.x, y: 0.15, z: C.fire.z }, { flames: 10, smoke: 14, scale: 1 });
+  if (fire) group.add(fire.root);
+  let t = rnd() * 10;
+  group.userData.tick = (dt: number): void => {
+    t += dt;
+    banner.wave(t);
+    fire?.update(dt);
+  };
+  return group;
+}
 
 function buildPalisade(b: PieceBuilder, rnd: () => number, keepClear: ReadonlyArray<{ x: number; z: number; r: number }>): void {
   const bark = age1Material('bark');

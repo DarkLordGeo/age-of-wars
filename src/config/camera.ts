@@ -1,27 +1,39 @@
 /**
- * Battlefield camera (Age 1). A fixed shot "standing" just in front of and to the side of the
- * player's camp: slightly elevated (20 m), looking down ~16° and diagonally across the lane toward the
- * enemy camp. The player's camp and watchtower are the near-side anchor, the enemy camp sits in
- * the distance. No player rotation, orbit, pan or zoom.
+ * Battlefield camera (Age 1). A close, slightly elevated side-on shot (looking ~20° down,
+ * angled a little toward the enemy) that the player slides along the lane, from their own
+ * cave to the enemy's, like the classic game's scrolling view. Height and angle never change;
+ * there is no rotation, orbit or zoom.
  *
  * World: the lane runs along +X (player base at x = -40, enemy at +40); the camera side is +Z.
  * Distances in metres, angles in degrees.
  */
 export const CAMERA = {
-  /** Fixed eye position. */
-  position: { x: -66, y: 20, z: 31 },
-  /** Default look-at point (mid-lane, a little toward the enemy). */
-  target: { x: -16, y: 2, z: -2 },
+  /** Eye position relative to the focus point on the lane. */
+  offset: { x: -12, y: 10, z: 25 },
+  /** Height of the look-at point above the lane. */
+  lookY: 2,
   /** Vertical FOV at 16:9; narrower screens widen it so the horizontal framing holds. */
   fov: 40,
-  minHorizontalFov: 66,
+  minHorizontalFov: 62,
 
-  /**
-   * The only automatic movement: the look-at point eases a few metres toward the fighting so a
-   * push on either base stays well framed. Small and slow on purpose.
-   */
-  track: { min: -8, max: 10, rate: 0.6, deadzone: 2 },
+  /** Player-controlled slide along the lane (focus x, metres). */
+  pan: {
+    /** Range: one end frames the player's cave, the other the enemy's. */
+    min: -37,
+    max: 37,
+    /** Where a match starts: on the player's base. */
+    start: -35,
+    /** Arrow keys / A-D speed and edge-scroll speed (m/s). */
+    keySpeed: 38,
+    edgeSpeed: 30,
+    /** Edge-scroll zone width (px); ignored near the HUD at the top. */
+    edgePx: 26,
+    /** Wheel: metres per wheel pixel. */
+    wheel: 0.045,
+    /** Smoothing toward the goal (1/s). */
+    ease: 9,
+  },
 
-  /** Main-menu background: same shot with a slow, gentle drift. */
-  menuSway: { yawDeg: 3, heightM: 1.2, period: 26 },
+  /** Main-menu background: a slow sweep up and down the lane. */
+  menuSweep: { amplitude: 26, period: 48 },
 } as const;

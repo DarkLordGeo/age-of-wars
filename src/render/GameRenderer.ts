@@ -49,6 +49,7 @@ export class GameRenderer {
     this.env = buildEnvironment(this.scene, this.assets, this.renderer);
     this.projectileRenderer = new ProjectileRenderer(this.scene);
     this.rig = new CameraRig();
+    this.rig.attachInput(this.renderer.domElement);
     this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
 
     bus.on('attack', (e) => {

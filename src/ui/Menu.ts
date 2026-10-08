@@ -159,13 +159,13 @@ export class Menu {
         return `
           <div class="title small"><span class="t1">How to Play</span></div>
           <div class="mtext">
-            <p>Destroy the enemy camp before they destroy yours.</p>
+            <p>Destroy the enemy cave before they destroy yours.</p>
             <ul>
               <li><b>Train units</b> from the <b>Menu</b> panel (top right) or with keys <kbd>1</kbd>-<kbd>3</kbd>. They march down the path and fight on their own.</li>
-              <li><b>Gold</b> comes in over time and for every enemy you kill. <b>XP</b> from kills unlocks the Archer and the Brute.</li>
-              <li><b>Upgrades</b> (hammer icon in the Menu panel) make your units, walls and watchtower stronger. The star evolves to the next age.</li>
+              <li><b>Gold</b> only comes from killing enemies (and selling turrets), so spend it wisely. <b>XP</b> counts toward evolving.</li>
+              <li><b>Turrets</b> sit on your tower. Buy more tower slots with <b>Add slot</b>; sell a turret for half its price.</li>
               <li>Click a unit in the <b>training queue</b> (top centre) to cancel it and get your gold back.</li>
-              <li>The camera watches from beside your camp and follows the fighting on its own.</li>
+              <li><b>Move the view</b> along the battlefield: drag, scroll, <kbd>A</kbd>/<kbd>D</kbd> or the arrow keys, or hold the mouse at the screen edge.</li>
               <li><kbd>Esc</kbd> pauses the game.</li>
             </ul>
           </div>

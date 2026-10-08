@@ -59,6 +59,7 @@ export class Hud {
     this.unitOrder = Object.keys(content.units);
     this.turretOrder = Object.keys(content.turrets);
     root.innerHTML = `
+      <div class="topbar">
       <div class="plank purse">
         <div class="gold"><i class="coin"></i><span data-id="gold"></span></div>
         <div class="exp">Exp: <b data-id="xp"></b><small data-id="xpnext"></small></div>
@@ -82,6 +83,7 @@ export class Hud {
         <div class="menu-row" data-id="row-turrets" hidden></div>
         <div class="menu-row" data-id="row-sell" hidden></div>
         <div class="tip" data-id="tip"></div>
+      </div>
       </div>
       <div class="hpbar player"><div class="fill" data-id="pf"></div><span data-id="pt"></span></div>
       <div class="hpbar enemy"><div class="fill" data-id="ef"></div><span data-id="et"></span></div>
