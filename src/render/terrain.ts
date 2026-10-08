@@ -31,11 +31,8 @@ export function pathSlope(x: number): number {
  * Ponds (centre x/z, radius in metres): shallow basins carved into the meadow, clear of the
  * path and the camps. Water surface height is `pondLevel(p)`.
  */
-export const PONDS: ReadonlyArray<{ x: number; z: number; r: number }> = [
-  { x: -14, z: 14, r: 4.6 },
-  { x: 19, z: -14.5, r: 5.4 },
-  { x: 5, z: 21, r: 3.2 },
-];
+// Ponds were tried and removed (owner's call); add entries here to bring them back.
+export const PONDS: ReadonlyArray<{ x: number; z: number; r: number }> = [];
 
 const pondLevels = new Map<object, number>();
 
