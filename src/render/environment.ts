@@ -216,18 +216,28 @@ function addTrees(scene: Scene, blocked: (x: number, z: number, r: number) => bo
   // Flank groves beyond the camps frame the battlefield on both sides.
   for (const sx of [-1, 1]) groves.push({ x: sx * (GAME.baseOffset + 32), z: -6, r: 14, n: 22 });
   const placed: Array<{ x: number; z: number }> = [];
+  const candidates: Array<{ x: number; z: number; minGap: number }> = [];
   for (const g of groves) {
     for (let k = 0; k < g.n; k++) {
       const a = rng() * Math.PI * 2;
       const d = Math.sqrt(rng()) * g.r;
-      const x = g.x + Math.cos(a) * d;
-      const z = g.z + Math.sin(a) * d;
-      if (z > -LANE_CLEARANCE - 1 && Math.abs(x) < GAME.baseOffset + 18) continue; // keep the lane view clear
-      if (z > 4) continue;
-      if (campDistance(x, z) < CAMP_RADIUS + 4) continue;
-      if (nearPond(x, z, 2.5)) continue;
-      if (placed.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < 4.5)) continue;
-      if (blocked(x, z, 1.2)) continue; // never grow out of a boulder or a cliff
+      candidates.push({ x: g.x + Math.cos(a) * d, z: g.z + Math.sin(a) * d, minGap: 4.5 });
+    }
+  }
+  // Gap fill: walk the strip between the lane and the back wall and plant a tree wherever the
+  // groves left an empty clearing (no tree within ~4 m), so the treeline reads as one forest.
+  const gapFill: Array<{ x: number; z: number }> = [];
+  for (let gx = -95; gx <= 95; gx += 2.6) {
+    for (let gz = -(LANE_CLEARANCE + 3); gz >= -31; gz -= 2.6) gapFill.push({ x: gx + (rng() - 0.5) * 2, z: gz + (rng() - 0.5) * 2 });
+  }
+  const tryTree = (x: number, z: number, minGap: number): void => {
+    {
+      if (z > -LANE_CLEARANCE - 1 && Math.abs(x) < GAME.baseOffset + 18) return; // keep the lane view clear
+      if (z > 4) return;
+      if (campDistance(x, z) < CAMP_RADIUS + 4) return;
+      if (nearPond(x, z, 2.5)) return;
+      if (placed.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < minGap)) return;
+      if (blocked(x, z, 1.2)) return; // never grow out of a boulder or a cliff
       placed.push({ x, z });
       const isDead = rng() < 0.05;
       const height = isDead ? 7 + rng() * 6 : 6.5 + rng() * 7 + Math.max(0, -z - 40) * 0.05;
@@ -237,7 +247,9 @@ function addTrees(scene: Scene, blocked: (x: number, z: number, r: number) => bo
       if (isDead) deadPl[Math.floor(rng() * dead.length)]!.push(p);
       else byVariant[Math.floor(rng() * variants.length)]!.push(p);
     }
-  }
+  };
+  for (const c of candidates) tryTree(c.x, c.z, c.minGap);
+  for (const c of gapFill) tryTree(c.x, c.z, 16); // only where nothing stands within 4 m
   variants.forEach((v, i) => addTreeInstances(scene, v, byVariant[i]!));
   dead.forEach((v, i) => addTreeInstances(scene, v, deadPl[i]!));
 }
