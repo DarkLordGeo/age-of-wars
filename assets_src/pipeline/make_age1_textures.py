@@ -46,7 +46,7 @@ def tileable_noise(size, scale, octaves=4, seed=0):
 
 
 def ground():
-    for name in ['leafy_grass', 'dirt_floor', 'rocky_trail_02', 'brown_mud_dry']:
+    for name in ['rocky_terrain_02', 'forrest_ground_01', 'dirt_floor', 'rocky_trail_02', 'brown_mud_dry']:
         src = os.path.join(SRC_PH, name, f'{name}_diff_1k.jpg')
         Image.open(src).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, f'ground_{name}.jpg'), quality=86, optimize=True)
         nor = os.path.join(SRC_PH, name, f'{name}_nor_gl_1k.jpg')
@@ -116,30 +116,47 @@ def wattle(size=256):
     save_jpg(col, 'wattle.jpg')
 
 
-def grass_tuft(name, base_col, tip_col, seed, blades=34, size=256, S=3):
-    """A grass tuft made for RTS viewing distance: fewer, wider blades, dark roots fading to
-    bright tips, clear gaps between blades (so minified mips stay airy instead of a dark blob)."""
+def grass_tuft(name, base_col, tip_col, seed, blades=60, size=256, S=3, dry_mix=0.15, seeds=0, dry_col=((120, 104, 60), (196, 178, 120))):
+    """A grass clump for RTS viewing distance: curved blades of varied width and length, dark
+    roots fading to muted tips (the dark base reads as contact shadow on the ground), a share
+    of dry blades and optional seed heads. Gaps between blades keep minified mips airy."""
     from PIL import ImageDraw
     r = np.random.default_rng(seed)
     W = size * S
     img = Image.new('RGBA', (W, W), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    order = sorted(range(blades), key=lambda _: r.random())
-    for _ in order:
-        x0 = W * (0.5 + r.normal(0, 0.13))
-        h = W * r.uniform(0.45, 0.97)
-        lean = r.normal(0, 0.22) * h
-        width = W * r.uniform(0.012, 0.022)
-        steps = 14
-        shade = r.uniform(0.8, 1.15)
+    for _ in range(blades):
+        dry = r.random() < dry_mix
+        bc, tc = dry_col if dry else (base_col, tip_col)
+        x0 = W * (0.5 + r.normal(0, 0.12))
+        h = W * r.uniform(0.35, 0.96) * (0.85 if dry else 1)
+        lean = r.normal(0, 0.16) * h
+        bend = r.normal(0, 0.18) * h          # blades arc over, more toward the tip
+        width = W * r.uniform(0.008, 0.02)
+        steps = 16
+        shade = r.uniform(0.78, 1.1)
+        hue = r.normal(0, 0.06)
+        def pt(t):
+            return (x0 + lean * t + bend * t ** 2.2, W - h * (t - 0.18 * abs(bend) / h * t ** 3))
         for k in range(steps):
             t0, t1 = k / steps, (k + 1) / steps
-            def pt(t):
-                return (x0 + lean * t * t, W - h * t)
             (ax, ay), (bx, by) = pt(t0), pt(t1)
-            w0, w1 = width * (1 - t0 * 0.9), width * (1 - t1 * 0.9)
-            c = [int(min(255, (base_col[i] + (tip_col[i] - base_col[i]) * t0 ** 0.8) * shade)) for i in range(3)]
+            w0, w1 = width * (1 - t0 ** 1.3 * 0.92), width * (1 - t1 ** 1.3 * 0.92)
+            g = t0 ** 0.7
+            root = 0.55 + 0.45 * min(1.0, t0 / 0.35)   # darker near the ground
+            c = [(bc[i] + (tc[i] - bc[i]) * g) * shade * root for i in range(3)]
+            c = [c[0] * (1 + hue), c[1], c[2] * (1 - hue)]
+            c = [int(max(0, min(255, v))) for v in c]
             d.polygon([(ax - w0, ay), (ax + w0, ay), (bx + w1, by), (bx - w1, by)], fill=(*c, 255))
+    for _ in range(seeds):
+        x0 = W * (0.5 + r.normal(0, 0.1))
+        h = W * r.uniform(0.75, 0.98)
+        lean = r.normal(0, 0.12) * h
+        d.line([(x0, W), (x0 + lean, W - h)], fill=(118, 112, 70, 255), width=max(1, int(S * 1.2)))
+        for k in range(7):
+            t = 0.82 + k * 0.025
+            cx, cy = x0 + lean * t, W - h * t
+            d.ellipse([cx - S * 2.2, cy - S * 4, cx + S * 2.2, cy + S * 4], fill=(170, 150, 96, 255))
     img = img.resize((size, size), Image.LANCZOS)
     img.save(os.path.join(OUT, name), optimize=True)
 
@@ -151,7 +168,8 @@ if __name__ == '__main__':
     log_wood()
     hide()
     wattle()
-    grass_tuft('grass_tuft_green.png', (58, 82, 28), (176, 196, 92), seed=31)
-    grass_tuft('grass_tuft_dry.png', (110, 98, 52), (226, 208, 140), seed=32)
+    grass_tuft('grass_tuft_green.png', (34, 52, 20), (112, 134, 62), seed=31, dry_mix=0.12)
+    grass_tuft('grass_tuft_dry.png', (92, 82, 44), (196, 180, 124), seed=32, dry_mix=0.0, blades=50)
+    grass_tuft('grass_tuft_meadow.png', (38, 56, 22), (124, 140, 70), seed=33, dry_mix=0.3, seeds=5, blades=55)
     for f in sorted(os.listdir(OUT)):
         print(f, os.path.getsize(os.path.join(OUT, f)))

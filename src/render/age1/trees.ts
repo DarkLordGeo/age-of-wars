@@ -54,9 +54,19 @@ function frondMaterials(): MeshStandardMaterial[] {
         alphaTest: 0.42,
         side: DoubleSide,
         roughness: 0.9,
-        color: 0xd8e6c8,
+        color: 0xd0dcc0,
+        vertexColors: true,
       });
       addSway(m, { strength: 0.012, power: 1.2, speed: 1.1 });
+      // Fronds carry crown-shaped normals (out from the trunk): keep them on both card faces
+      // instead of flipping on the back face, which turns half the needles black.
+      const sway = m.onBeforeCompile;
+      m.onBeforeCompile = (shader, renderer) => {
+        sway.call(m, shader, renderer);
+        shader.fragmentShader = shader.fragmentShader.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;');
+      };
+      const key = m.customProgramCacheKey();
+      m.customProgramCacheKey = () => `${key}:crown-normals`;
       return m;
     });
   }
@@ -116,26 +126,28 @@ const v = new Vector3();
 /** A 1 m tall conifer. `seed` varies whorl count, spacing, branch angles and silhouette. */
 export function buildConifer(seed: number): TreeVariant {
   const rnd = rng32(0xc0f1 + seed * 7919);
-  const slim = 0.75 + rnd() * 0.35; // crown width factor
-  const crownBase = 0.2 + rnd() * 0.08;
-  const whorls = 10 + Math.floor(rnd() * 4);
+  const slim = 0.72 + rnd() * 0.32; // crown width factor
+  const crownBase = 0.15 + rnd() * 0.06;
+  const whorls = 15 + Math.floor(rnd() * 5);
   const cards: BufferGeometry[] = [];
 
   for (let i = 0; i < whorls; i++) {
     const t = i / (whorls - 1); // 0 = lowest whorl
-    const y = crownBase + (0.97 - crownBase) * Math.pow(t, 0.92) + (rnd() - 0.5) * 0.015;
-    const len = (0.04 + 0.3 * Math.pow(1 - t, 0.95)) * slim * (0.9 + rnd() * 0.2);
-    const n = Math.max(3, Math.round(7 - t * 3 + rnd()));
-    const pitch = -0.25 + t * 0.5; // lower branches droop, upper ones lift
+    const y = crownBase + (0.97 - crownBase) * Math.pow(t, 0.9) + (rnd() - 0.5) * 0.02;
+    const n = Math.max(3, Math.round(8 - t * 4 + rnd()));
+    const pitch = -0.26 + t * 0.5; // lower branches droop, upper ones lift
     const offset = rnd() * Math.PI * 2;
     for (let j = 0; j < n; j++) {
-      const yaw = offset + (j / n) * Math.PI * 2 + (rnd() - 0.5) * 0.5;
-      for (const roll of [0.15 * (rnd() - 0.5), (rnd() < 0.5 ? -1 : 1) * (0.9 + rnd() * 0.3)]) {
-        const card = frondCard(len, len * 0.62, 0.22 + (1 - t) * 0.15, roll);
-        q.setFromAxisAngle(UP, yaw);
-        q2.setFromAxisAngle(v.set(0, 0, 1), pitch + (rnd() - 0.5) * 0.15);
+      if (rnd() < 0.08 && t < 0.85) continue; // the odd missing branch breaks the silhouette
+      const yaw = offset + (j / n) * Math.PI * 2 + (rnd() - 0.5) * 0.6;
+      const len = (0.04 + 0.32 * Math.pow(1 - t, 0.9)) * slim * (0.72 + rnd() * 0.5);
+      const rolls = [0.2 * (rnd() - 0.5), 0.85 + rnd() * 0.35, -(0.85 + rnd() * 0.35)];
+      for (const roll of rolls) {
+        const card = frondCard(len, len * 0.6, 0.2 + (1 - t) * 0.18 + rnd() * 0.06, roll);
+        q.setFromAxisAngle(UP, yaw + (rnd() - 0.5) * 0.25);
+        q2.setFromAxisAngle(v.set(0, 0, 1), pitch + (rnd() - 0.5) * 0.2);
         q.multiply(q2);
-        card.applyMatrix4(m4.compose(v.set(0, y, 0), q, new Vector3(1, 1, 1)));
+        card.applyMatrix4(m4.compose(v.set(0, y - 0.01 * Math.abs(roll), 0), q, new Vector3(1, 1, 1)));
         cards.push(card);
       }
     }
@@ -149,8 +161,9 @@ export function buildConifer(seed: number): TreeVariant {
   }
   const fronds = mergeGeometries(cards, false)!;
   for (const c of cards) c.dispose();
+  shadeCrown(fronds);
 
-  const trunk = new CylinderGeometry(0.006, 0.03, 1.02, 6, 1, true);
+  const trunk = new CylinderGeometry(0.006, 0.032, 1.02, 7, 1, true);
   trunk.translate(0, 0.49, 0);
   const tuv = trunk.attributes.uv!;
   for (let i = 0; i < tuv.count; i++) tuv.setXY(i, tuv.getX(i), tuv.getY(i) * 6);
@@ -163,6 +176,33 @@ export function buildConifer(seed: number): TreeVariant {
     trunkMaterial: trunkMaterial(),
     tris: (fronds.index!.count + trunk.index!.count) / 3,
   };
+}
+
+/**
+ * Crown lighting for frond cards: normals point out from the trunk and up (a rounded crown, so
+ * the tree shades like a volume instead of a stack of flat cards), and vertex colours darken the
+ * inner, trunk-side end of every branch and the lower crown (self-shadowing inside the foliage).
+ */
+function shadeCrown(g: BufferGeometry): void {
+  const pos = g.attributes.position!;
+  const nrm = g.attributes.normal!;
+  const col = new Float32Array(pos.count * 3);
+  const n = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const r = Math.hypot(x, z);
+    n.set(x, 0, z).normalize().multiplyScalar(0.85).add(v.set(0, 0.45 + y * 0.5, 0)).normalize();
+    nrm.setXYZ(i, n.x, n.y, n.z);
+    const inner = Math.min(1, r / 0.12); // 0 at the trunk, 1 at ~12 cm out (unit tree)
+    const shade = (0.42 + 0.58 * inner) * (0.72 + 0.28 * Math.min(1, y * 1.2));
+    col[i * 3] = shade;
+    col[i * 3 + 1] = shade;
+    col[i * 3 + 2] = shade * 0.96;
+  }
+  g.setAttribute('color', new Float32BufferAttribute(col, 3));
+  nrm.needsUpdate = true;
 }
 
 /** A dead, bare conifer: tall snag with stubby, mostly broken branches. */

@@ -53,8 +53,9 @@
         box-shadow: inset 0 -3px 0 rgba(0,0,0,.25), 0 4px 10px rgba(0,0,0,.45);
       }
       .plank::after { /* nailed corner */
-        content: ''; position: absolute; bottom: 6px; width: 9px; height: 9px; border-radius: 50%;
-        background: radial-gradient(circle at 35% 35%, #d6d0c4, #5d5a54); box-shadow: 0 1px 2px rgba(0,0,0,.6);
+        content: ''; position: absolute; bottom: 7px; width: 13px; height: 13px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 32%, #b9b2a6 0 18%, #6d675e 45%, #34312c 100%);
+        box-shadow: inset 0 -1px 1px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.7), 0 0 0 1px #2a1a0a;
       }
       .purse { width: 220px; padding: 9px 16px 14px; border-radius: 8px; }
       .purse::after { right: 8px; }
@@ -76,8 +77,8 @@
       .sq img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
       .sq.filled:hover::after { content: '×'; position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; color: #fff; background: rgba(150,20,10,.6); }
 
-      .menu-plank { width: max-content; min-width: 240px; max-width: calc(100vw - 32px); padding: 6px 14px 26px; border-radius: 8px; }
-      .menu-plank::after { left: 8px; }
+      .menu-plank { width: max-content; min-width: 260px; max-width: calc(100vw - 32px); padding: 6px 14px 30px; border-radius: 8px; }
+      .menu-plank::after { left: 9px; }
       .menu-title { font-family: var(--display); font-size: 20px; line-height: 1.2; color: #f7d23b; text-shadow: 0 2px 0 #5a3204, 0 0 6px rgba(0,0,0,.4); margin: 0 0 4px 4px; }
       .menu-row { display: flex; gap: 9px; flex-wrap: wrap; }
       .menu-row[hidden] { display: none; }
@@ -109,7 +110,7 @@
       .ibtn.upgrade { color: #3a2a1a; }
       .ibtn .owned { display: none; position: absolute; right: 2px; bottom: 0; font-weight: 800; color: #1d7a1d; text-shadow: 0 0 3px #fff; }
       .ibtn.owned .owned { display: block; }
-      .tip { position: absolute; left: 14px; right: 14px; bottom: 5px; font-size: 13px; font-weight: 800; color: #3b2208; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tip { position: absolute; left: 32px; right: 14px; bottom: 6px; font-size: 15px; font-weight: 800; color: #3b2208; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
       .hpbar { position: fixed; top: 34%; width: 22px; height: 36%; border: 2px solid #1a0f06; background: rgba(20,8,6,.55); box-shadow: 0 2px 8px rgba(0,0,0,.5); }
       .hpbar.player { left: 16px; } .hpbar.enemy { right: 16px; }

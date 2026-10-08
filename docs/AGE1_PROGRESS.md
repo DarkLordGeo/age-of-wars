@@ -46,6 +46,15 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
   - Age 1 music `public/audio/music/glorious-morning.mp3` added (owner-licensed, see `docs/ASSET_LICENSES.md`).
   - Verified in Chrome (RTX 3050): all 4 player and enemy slots visible on the caves from the battle camera, units spawn and march, team tints.
 
+- 2026-10-08 (local session 2) visual pass from owner feedback:
+  - Camera: removed the front-right boulder wall (scaled boulders reached z~23, the camera sits at z=25, so the view went white inside a boulder at the enemy end). Camera focus is now clamped to the lane and frame dt can't go negative.
+  - Footpath meanders up to ~2.9 m and straightens into each camp; units and projectiles are drawn offset onto it and face along it (render-only, sim lane unchanged).
+  - Ponds (`PONDS` in terrain.ts, `age1/water.ts`): carved basins, rim-level water with sky reflection and scrolling ripples, muddy shore splat, reed tufts.
+  - Trees/logs/bushes are rejected where a downward ray hits rock or cliff (no more trees growing out of boulders) and kept off ponds.
+  - Conifers: more whorls and three cards per branch, crown-shaped normals (no black back faces), inner-crown shading; ~1.2-1.4k tris each.
+  - Meadow ground: Poly Haven rocky_terrain_02 broken up with forrest_ground_01 (replaces leafy_grass, which needed a neon green tint). Grass tufts regenerated (curved blades, dark roots, mixed dry blades) plus a meadow variant with seed heads.
+  - HUD: bigger iron nail on the planks, hint text moved clear of it and enlarged.
+
 ## Next
 - Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
 - Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).
@@ -62,14 +71,13 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 - Quaternius rejected (non-CC0 licence + low-poly style); Kenney rejected (stylised). Poly Haven trees rejected (too heavy / looked dead when decimated).
 
 ## Known issues
-- At the enemy end of the lane (camera focus ~+35) a dark open-shell cliff scan fills the bottom-right of the screen; cull or move it.
 - The Rodin cave's bright green tree reads stylised next to the conifers and hides the top turret slots a little.
 - Cloud sessions can't open *.vercel.app (egress proxy), so the live site has to be checked on a real browser.
 - Shadows of swaying foliage are static (depth pass is not patched); not noticeable at battle distance.
 - Headless verification runs in SwiftShader at ~1 fps, so the sim was fast-forwarded for screenshots; real-time feel still needs a check on real hardware.
 
 ## Test / build status (last run 2026-10-08)
-- `npm test`: 84/84 pass (2026-10-08 local session). Earlier: 103/103 pass (per-asset tests for the removed GLBs are gone; 12 new Age 1 tests). `npm run typecheck`: pass. `npm run build`: pass.
+- `npm test`: 85/85 pass (2026-10-08 local session 2). Earlier: 103/103 pass (per-asset tests for the removed GLBs are gone; 12 new Age 1 tests). `npm run typecheck`: pass. `npm run build`: pass.
 
 ## Files changed recently
 `src/render/age1/*` (new), `src/render/environment.ts`, `src/render/terrain.ts`, `src/render/BaseView.ts`, `src/render/GameRenderer.ts`, `src/render/ProjectileRenderer.ts`, `src/assets/{manifest,scenery,placeholders,AssetLibrary}.ts`, `src/config/projectiles.ts`, `tests/age1-structures.test.ts`, `tests/scenery-assets.test.ts`, `public/textures/age1/*`, `assets_src/pipeline/make_age1_textures.py`, `docs/*`.

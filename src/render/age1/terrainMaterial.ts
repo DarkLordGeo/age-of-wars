@@ -3,7 +3,7 @@ import { CLOUD_APPLY, CLOUD_GLSL, CLOUD_UNIFORMS } from './clouds';
 import { age1Texture } from './materials';
 
 /**
- * Splat-blended ground: grass (Poly Haven leafy_grass), worn dirt, trampled mud and rock, mixed per
+ * Splat-blended ground: meadow (Poly Haven rocky_terrain_02 broken up by forrest_ground_01), worn dirt, trampled mud and rock, mixed per
  * vertex by the `splat` attribute (x = dirt, y = rock, z = mud; grass is the remainder) and broken
  * up with procedural noise so blend edges look organic rather than following the mesh grid.
  *
@@ -17,11 +17,12 @@ import { age1Texture } from './materials';
  */
 export function createTerrainMaterial(): MeshStandardMaterial {
   const tex = {
-    tGrass: age1Texture('ground_leafy_grass.jpg'),
+    tGrass: age1Texture('ground_rocky_terrain_02.jpg'),
+    tGrass2: age1Texture('ground_forrest_ground_01.jpg'),
     tDirt: age1Texture('ground_dirt_floor.jpg'),
     tRock: age1Texture('ground_rocky_trail_02.jpg'),
     tMud: age1Texture('ground_brown_mud_dry.jpg'),
-    nGrass: age1Texture('ground_leafy_grass_nor.jpg'),
+    nGrass: age1Texture('ground_rocky_terrain_02_nor.jpg'),
     nDirt: age1Texture('ground_dirt_floor_nor.jpg'),
     nRock: age1Texture('ground_rocky_trail_02_nor.jpg'),
     nMud: age1Texture('ground_brown_mud_dry_nor.jpg'),
@@ -39,7 +40,7 @@ export function createTerrainMaterial(): MeshStandardMaterial {
       .replace(
         '#include <common>',
         `#include <common>
-uniform sampler2D tGrass, tDirt, tRock, tMud, nGrass, nDirt, nRock, nMud;
+uniform sampler2D tGrass, tGrass2, tDirt, tRock, tMud, nGrass, nDirt, nRock, nMud;
 varying vec3 vSplat;
 varying vec2 vGround;
 float gwDirt, gwMud, gwRock; // blend weights, shared by the colour and normal stages
@@ -61,11 +62,16 @@ ${CLOUD_GLSL}`,
         '#include <map_fragment>',
         `{
   float n = gNoise(vGround * 0.18) * 0.6 + gNoise(vGround * 0.9) * 0.3 + gNoise(vGround * 3.1) * 0.1;
-  // Multipliers calibrate each photo texture to the Age 1 palette (meadow #6a9444, path #8a7352).
-  vec3 cGrass = twoScale(tGrass, vGround, 0.22) * vec3(0.5, 1.22, 0.52);
-  // large-scale patchiness of the meadow (lusher / drier)
+  // Multipliers calibrate each photo texture to the Age 1 palette (a natural, slightly dry
+  // meadow and a brown worn path), gently: strong tints read as neon at battle distance.
+  vec3 cGrass = twoScale(tGrass, vGround, 0.075) * vec3(1.12, 1.32, 1.35);
+  // patches of trampled forest-floor grass (twigs, needles) break up the meadow
+  vec3 cGrass2 = twoScale(tGrass2, vGround, 0.24) * vec3(0.7, 0.84, 0.62);
+  float patchy = smoothstep(0.5, 0.75, gNoise(vGround * 0.05 + 3.0) * 0.8 + n * 0.2);
+  cGrass = mix(cGrass, cGrass2, patchy * 0.75);
+  // large-scale lusher / drier variation
   float lush = gNoise(vGround * 0.035 + 7.0);
-  cGrass *= mix(vec3(0.92, 0.98, 0.86), vec3(1.08, 1.04, 0.92), lush);
+  cGrass *= mix(vec3(0.94, 0.96, 0.88), vec3(1.05, 1.06, 0.96), lush);
   vec3 cDirt = twoScale(tDirt, vGround, 0.3) * vec3(0.56, 0.64, 0.66);
   vec3 cRock = twoScale(tRock, vGround, 0.16) * vec3(0.95, 1.3, 1.75);
   vec3 cMud = twoScale(tMud, vGround, 0.25) * vec3(0.98, 1.0, 1.02);
@@ -82,7 +88,7 @@ ${CLOUD_GLSL}`,
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
 {
-  vec3 tn = texture2D(nGrass, vGround * 0.22).xyz;
+  vec3 tn = texture2D(nGrass, vGround * 0.075).xyz;
   tn = mix(tn, texture2D(nDirt, vGround * 0.3).xyz, gwDirt);
   tn = mix(tn, texture2D(nMud, vGround * 0.25).xyz, gwMud);
   tn = mix(tn, texture2D(nRock, vGround * 0.16).xyz, gwRock);
@@ -98,6 +104,6 @@ ${CLOUD_GLSL}`,
       )
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${CLOUD_APPLY('vGround')}`);
   };
-  mat.customProgramCacheKey = () => 'age1-terrain-v2';
+  mat.customProgramCacheKey = () => 'age1-terrain-v3';
   return mat;
 }

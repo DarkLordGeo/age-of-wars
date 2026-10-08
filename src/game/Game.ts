@@ -167,7 +167,7 @@ export class Game {
   }
 
   private frame = (now: number): void => {
-    const dt = Math.min((now - this.last) / 1000, GAME.maxFrameDelta);
+    const dt = Math.max(0, Math.min((now - this.last) / 1000, GAME.maxFrameDelta));
     this.last = now;
 
     if (this.mode !== 'paused') {

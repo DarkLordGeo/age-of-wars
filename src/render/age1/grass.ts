@@ -54,11 +54,11 @@ function tuftGeometry(): BufferGeometry {
 
 let geo: BufferGeometry | null = null;
 
-export function addGrassTufts(scene: Scene, file: 'grass_tuft_green.png' | 'grass_tuft_dry.png', placements: readonly TuftPlacement[]): InstancedMesh | null {
+export function addGrassTufts(scene: Scene, file: 'grass_tuft_green.png' | 'grass_tuft_dry.png' | 'grass_tuft_meadow.png', placements: readonly TuftPlacement[]): InstancedMesh | null {
   if (placements.length === 0) return null;
   geo ??= tuftGeometry();
   const mat = new MeshStandardMaterial({
-    name: file.includes('dry') ? 'GrassDry' : 'GrassGreen',
+    name: file.includes('dry') ? 'GrassDry' : file.includes('meadow') ? 'GrassMeadow' : 'GrassGreen',
     map: age1Texture(file),
     alphaTest: 0.35,
     side: DoubleSide,

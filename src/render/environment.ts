@@ -12,8 +12,10 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
+  Raycaster,
   Scene,
   Vector3,
+  type Object3D,
   type Camera,
   type WebGLRenderer,
 } from 'three';
@@ -26,9 +28,10 @@ import { addGrassTufts, type TuftPlacement } from './age1/grass';
 import { createTerrainMaterial } from './age1/terrainMaterial';
 import { addTreeInstances, buildConifer, buildDeadTree, type TreePlacement } from './age1/trees';
 import { WIND } from './age1/wind';
+import { addPonds } from './age1/water';
 import { NO_AO_LAYER } from './post';
 import { addInstances, partsOf, type Placement } from './sceneryInstancing';
-import { campDistance, CAMP_RADIUS, LANE_CLEARANCE, pathCenterZ, PATH_HALF_WIDTH, terrainHeight } from './terrain';
+import { campDistance, CAMP_RADIUS, LANE_CLEARANCE, pathCenterZ, PATH_HALF_WIDTH, PONDS, terrainHeight } from './terrain';
 
 /** Direction toward the sun (also drives the sky shader and the shadow light). */
 export const SUN_DIR = new Vector3(-40, 60, 40).normalize();
@@ -71,18 +74,23 @@ export function buildEnvironment(scene: Scene, assets: AssetLibrary, renderer: W
   scene.add(sun);
 
   scene.add(buildTerrain());
-  addTrees(scene);
-  addGrass(scene);
+  const ponds = addPonds(scene);
+  // Rock and cliff first: trees, logs and bushes are then kept out of them.
+  const before = scene.children.length;
   addRocks(scene, assets);
   addMountains(scene, assets);
-  addGroundCover(scene, assets);
-  addDeadwood(scene, assets);
+  const blocked = obstacleTest(scene.children.slice(before));
+  addTrees(scene, blocked);
+  addGrass(scene);
+  addGroundCover(scene, assets, blocked);
+  addDeadwood(scene, assets, blocked);
 
   const dust = new DustMotes(scene, { minX: -70, maxX: 70, minZ: -14, maxZ: 12, maxY: 5 });
   return {
     update(dt: number, camera: Camera): void {
       WIND.time.value += dt;
       dust.update(dt);
+      ponds.update(dt);
       sky.update(dt, camera);
     },
   };
@@ -100,9 +108,42 @@ export function groundSplat(x: number, z: number, height: number, slope: number,
   const mud = (1 - smooth(0, CAMP_RADIUS - 4, camp)) * 0.75 + yard * 0.15 * noise;
   // Scattered bare patches in the meadow.
   const patches = Math.max(0, noise - 0.72) * 2.2;
+  // Wet, muddy shore around ponds.
+  let shore = 0;
+  for (const p of PONDS) {
+    const d = Math.hypot(x - p.x, z - p.z) / p.r;
+    shore = Math.max(shore, 1 - smooth(1.0, 1.45 + noise * 0.3, d));
+  }
   const dirt = Math.min(1, Math.max(path, verge, yard * 0.9, patches));
   const rock = Math.min(1, smooth(0.32, 0.55, slope) + smooth(11, 18, height) * 0.8);
-  return [dirt, rock, Math.min(1, mud)];
+  return [dirt, rock, Math.min(1, Math.max(mud, shore * 0.9))];
+}
+
+/** True when (x, z) is within `margin` metres (beyond the radius) of a pond. */
+function nearPond(x: number, z: number, margin: number): boolean {
+  return PONDS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + margin);
+}
+
+/**
+ * Builds a "is this spot covered by rock?" test from the rock and cliff meshes: a ray straight
+ * down at (x, z) (and around it, `radius` metres out) that hits rock more than 0.3 m above the
+ * ground means a tree or log there would grow out of the rock.
+ */
+function obstacleTest(meshes: Object3D[]): (x: number, z: number, radius: number) => boolean {
+  const ray = new Raycaster();
+  const origin = new Vector3();
+  const down = new Vector3(0, -1, 0);
+  for (const m of meshes) m.updateMatrixWorld(true);
+  return (x, z, radius) => {
+    for (const [ox, oz] of [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius]] as const) {
+      const px = x + ox;
+      const pz = z + oz;
+      ray.set(origin.set(px, 120, pz), down);
+      const hit = ray.intersectObjects(meshes, false)[0];
+      if (hit && hit.point.y > terrainHeight(px, pz) + 0.3) return true;
+    }
+    return false;
+  };
 }
 
 function smooth(a: number, b: number, x: number): number {
@@ -159,7 +200,7 @@ function buildTerrain(): Mesh {
 }
 
 /** Conifer groves behind the lane and around the camps, plus a few dead snags. */
-function addTrees(scene: Scene): void {
+function addTrees(scene: Scene, blocked: (x: number, z: number, r: number) => boolean): void {
   const rng = createRng(7);
   const variants = [0, 1, 2, 3].map(buildConifer);
   const dead = [0, 1].map(buildDeadTree);
@@ -184,7 +225,9 @@ function addTrees(scene: Scene): void {
       if (z > -LANE_CLEARANCE - 1 && Math.abs(x) < GAME.baseOffset + 18) continue; // keep the lane view clear
       if (z > 4) continue;
       if (campDistance(x, z) < CAMP_RADIUS + 4) continue;
+      if (nearPond(x, z, 2.5)) continue;
       if (placed.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < 4.5)) continue;
+      if (blocked(x, z, 1.2)) continue; // never grow out of a boulder or a cliff
       placed.push({ x, z });
       const isDead = rng() < 0.05;
       const height = isDead ? 7 + rng() * 6 : 6.5 + rng() * 7 + Math.max(0, -z - 40) * 0.05;
@@ -204,18 +247,23 @@ function addGrass(scene: Scene): void {
   const rng = createRng(17);
   const green: TuftPlacement[] = [];
   const dry: TuftPlacement[] = [];
+  const meadow: TuftPlacement[] = [];
   const tryPlace = (x: number, z: number, height: number, dryChance: number): void => {
     const dz = Math.abs(z - pathCenterZ(x));
     if (Math.abs(x) <= GAME.baseOffset + 2 && dz < PATH_HALF_WIDTH + 0.25 + rng() * 0.6) return; // keep the path bare
+    if (nearPond(x, z, -0.2)) return; // open water
     const camp = campDistance(x, z);
     if (camp < CAMP_RADIUS - 1.2) return; // trampled yards
     if (camp < CAMP_RADIUS + 0.6 && rng() < 0.6) return;
     const y = terrainHeight(x, z);
     if (y > 12) return;
-    const isDry = rng() < dryChance;
-    const v = 0.85 + rng() * 0.3;
-    const tint = isDry ? new Color(v, v * 0.97, v * 0.9) : new Color(v * (0.92 + rng() * 0.12), v, v * 0.85);
-    (isDry ? dry : green).push({ x, y: y - 0.03, z, height, rotY: rng() * Math.PI, tint });
+    const roll = rng();
+    const isDry = roll < dryChance;
+    const isMeadow = !isDry && roll < dryChance + 0.38;
+    const v = 0.88 + rng() * 0.28;
+    const tint = isDry ? new Color(v, v * 0.97, v * 0.9) : new Color(v * (0.95 + rng() * 0.1), v, v * 0.9);
+    const h = height * (0.75 + rng() * 0.5);
+    (isDry ? dry : isMeadow ? meadow : green).push({ x, y: y - 0.03, z, height: h, rotY: rng() * Math.PI, tint });
   };
   // Dense band along both path edges (the verge), taller right at the edge.
   for (let i = 0; i < 2600; i++) {
@@ -228,8 +276,21 @@ function addGrass(scene: Scene): void {
   for (let i = 0; i < 1700; i++) tryPlace((rng() * 2 - 1) * 130, LANE_CLEARANCE - 4 + rng() * 34, 0.3 + rng() * 0.3, 0.35);
   // Behind the lane: taller and denser near the trees.
   for (let i = 0; i < 2200; i++) tryPlace((rng() * 2 - 1) * 100, -(4 + Math.pow(rng(), 1.3) * 22), 0.4 + rng() * 0.55, 0.25);
+  // Reeds: tall, lush tufts crowding each pond's shore.
+  for (const p of PONDS) {
+    const n = Math.round(p.r * 26);
+    for (let i = 0; i < n; i++) {
+      const a = rng() * Math.PI * 2;
+      const d = p.r * (0.92 + Math.pow(rng(), 1.6) * 0.45);
+      const x = p.x + Math.cos(a) * d;
+      const z = p.z + Math.sin(a) * d;
+      const v = 0.8 + rng() * 0.25;
+      green.push({ x, y: terrainHeight(x, z) - 0.05, z, height: 0.7 + rng() * 0.7, rotY: rng() * Math.PI, tint: new Color(v * 0.9, v, v * 0.78) });
+    }
+  }
   addGrassTufts(scene, 'grass_tuft_green.png', green);
   addGrassTufts(scene, 'grass_tuft_dry.png', dry);
+  addGrassTufts(scene, 'grass_tuft_meadow.png', meadow);
 }
 
 interface RockKind {
@@ -346,15 +407,11 @@ const CLIFF_SIZE: Record<string, { w: number; h: number }> = {
  * along a path, scaled to a height range and sunk into the slope so no base edge shows.
  *  - back wall behind the lane (the main backdrop),
  *  - end wall past the enemy camp (closes the far end of the view),
- *  - front-right wall, far enough out that it frames the shot without hiding the lane,
  *  - a short wall behind the player camp (seen only in the menu drift).
  */
 const WALLS: Array<{ from: [number, number]; to: [number, number]; height: [number, number]; face: number; jitter: number; boulders?: boolean }> = [
   { from: [-100, -31], to: [104, -33], height: [20, 32], face: 0, jitter: 4 },
   { from: [94, -34], to: [98, 44], height: [26, 36], face: -Math.PI / 2, jitter: 3 },
-  // front-right: far enough out (z 34-42) that rays from the camera to the lane never cross it
-  // (built from closed boulder meshes: the cliff scans are open shells that look wrong side-on)
-  { from: [-6, 34], to: [98, 42], height: [9, 16], face: Math.PI, jitter: 4, boulders: true },
   { from: [-98, -30], to: [-100, 6], height: [18, 26], face: Math.PI / 2, jitter: 3 },
 ];
 
@@ -433,7 +490,7 @@ const COVER: Cover[] = [
 ];
 
 /** Grass, ferns, bushes and shrubs (alpha cards). Behind the lane; a few low tufts in front. */
-function addGroundCover(scene: Scene, assets: AssetLibrary): void {
+function addGroundCover(scene: Scene, assets: AssetLibrary, blocked: (x: number, z: number, r: number) => boolean): void {
   const rng = createRng(31);
   const tint = new Color();
   for (const c of COVER) {
@@ -446,6 +503,7 @@ function addGroundCover(scene: Scene, assets: AssetLibrary): void {
       const z = isFront ? LANE_CLEARANCE + 0.5 + rng() * 12 : -(LANE_CLEARANCE + 0.5 + Math.pow(rng(), 0.9) * 19);
       const s = c.scale[0] + rng() * (c.scale[1] - c.scale[0]);
       if (campDistance(x, z) < CAMP_RADIUS + 1) continue;
+      if (nearPond(x, z, 1) || blocked(x, z, 0.6 * s)) continue;
       tint.setRGB(1.0 + rng() * 0.35, 1.05 + rng() * 0.3, 0.9 + rng() * 0.3);
       list.push({
         x,
@@ -463,7 +521,7 @@ function addGroundCover(scene: Scene, assets: AssetLibrary): void {
 }
 
 /** Fallen logs and stumps behind the lane. */
-function addDeadwood(scene: Scene, assets: AssetLibrary): void {
+function addDeadwood(scene: Scene, assets: AssetLibrary, blocked: (x: number, z: number, r: number) => boolean): void {
   const rng = createRng(41);
   const spec: Array<{ key: string; count: number; scale: [number, number] }> = [
     { key: 'env.tree.log_fallen_01', count: 9, scale: [0.9, 1.5] },
@@ -480,6 +538,7 @@ function addDeadwood(scene: Scene, assets: AssetLibrary): void {
       const z = -(LANE_CLEARANCE + 2 + rng() * 17);
       const s = d.scale[0] + rng() * (d.scale[1] - d.scale[0]);
       if (campDistance(x, z) < CAMP_RADIUS + 2) continue;
+      if (nearPond(x, z, 1.5) || blocked(x, z, 1.2 * s)) continue;
       const v = 0.75 + rng() * 0.25;
       tint.setRGB(v, v, v);
       list.push({ x, y: terrainHeight(x, z) - 0.03 * s, z, rotY: rng() * Math.PI * 2, scaleX: s, scaleY: s, scaleZ: s, tint: tint.clone() });

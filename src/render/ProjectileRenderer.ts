@@ -13,6 +13,7 @@ import {
 } from 'three';
 import type { ProjectileDef } from '../config/schema';
 import type { Projectile } from '../sim/Projectile';
+import { pathCenterZ } from './terrain';
 
 const CAPACITY = 1024;
 const UNIT_X = new Vector3(1, 0, 0);
@@ -74,7 +75,7 @@ export class ProjectileRenderer {
       if (this.dir.lengthSq() > 1e-6) this.q.setFromUnitVectors(UNIT_X, this.dir.normalize());
       if (shape !== 'egg') this.q.multiply(this.spin.setFromAxisAngle(UNIT_Z, p.age * 9));
       const s = p.def.size;
-      this.m.compose(this.pos.set(p.x, p.y, p.z), this.q, this.scl.set(s, s, s));
+      this.m.compose(this.pos.set(p.x, p.y, p.z + pathCenterZ(p.x)), this.q, this.scl.set(s, s, s));
       mesh.setMatrixAt(i, this.m);
       mesh.setColorAt(i, this.color.setHex(p.def.color));
       this.counts.set(shape, i + 1);

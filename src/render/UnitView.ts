@@ -2,6 +2,7 @@ import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, type AnimationClip, type
 import type { ClipName } from '../assets/contract';
 import type { Unit } from '../sim/Unit';
 import { teamDir } from '../sim/types';
+import { pathCenterZ, pathSlope } from './terrain';
 import { ModelAnimator } from './ModelAnimator';
 import { excludeFromAO } from './post';
 
@@ -69,7 +70,10 @@ export class UnitView {
   update(dt: number, camera: Camera | null): void {
     const u = this.unit;
     const dir = teamDir(u.team);
-    this.root.position.set(u.centerX(dir), 0, u.z);
+    // The sim lane is straight; draw units on the meandering footpath and face along it.
+    const x = u.centerX(dir);
+    this.root.position.set(x, 0, u.z + pathCenterZ(x));
+    if (u.state !== 'dead') this.model.rotation.y = (dir === 1 ? 0 : Math.PI) - Math.atan(pathSlope(x));
     this.phase += dt * 9;
 
     if (this.animator) {

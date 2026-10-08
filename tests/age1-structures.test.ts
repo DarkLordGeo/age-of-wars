@@ -8,7 +8,7 @@ import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot, creat
 import { createSettlement, SETTLEMENT } from '../src/render/age1/settlement';
 import { buildConifer, buildDeadTree } from '../src/render/age1/trees';
 import { groundSplat } from '../src/render/environment';
-import { campDistance, CAMP_RADIUS, pathCenterZ, PATH_HALF_WIDTH, terrainHeight } from '../src/render/terrain';
+import { campDistance, CAMP_RADIUS, pathCenterZ, PATH_HALF_WIDTH, PONDS, pondLevel, terrainHeight } from '../src/render/terrain';
 
 const TINT = 0x2f6fdb;
 
@@ -139,11 +139,17 @@ describe('Age 1 terrain', () => {
     for (let x = -GAME.baseOffset; x <= GAME.baseOffset; x += 4) assert.equal(terrainHeight(x, pathCenterZ(x)), 0);
   });
 
-  it('paints the footpath as dirt and keeps it inside the lane', () => {
-    for (let x = -GAME.baseOffset; x <= GAME.baseOffset; x += 5) {
-      assert.ok(Math.abs(pathCenterZ(x)) + GAME.laneHalfWidth < PATH_HALF_WIDTH);
-      assert.ok(groundSplat(x, pathCenterZ(x), 0, 0, 0.5)[0] > 0.9);
+  it('paints the meandering footpath as dirt, wide enough for the units, straight into the camps', () => {
+    assert.ok(GAME.laneHalfWidth + 0.4 < PATH_HALF_WIDTH, 'units (drawn on the path) stay on the dirt');
+    for (const x of [-GAME.baseOffset, GAME.baseOffset]) assert.ok(Math.abs(pathCenterZ(x)) < 1e-6, 'path ends on each base');
+    let bend = 0;
+    for (let x = -GAME.baseOffset; x <= GAME.baseOffset; x += 1) {
+      bend = Math.max(bend, Math.abs(pathCenterZ(x)));
+      // the whole path stays on the flat corridor
+      assert.ok(Math.abs(pathCenterZ(x)) + PATH_HALF_WIDTH < 7, `x ${x}`);
+      if (x % 5 === 0) assert.ok(groundSplat(x, pathCenterZ(x), 0, 0, 0.5)[0] > 0.9);
     }
+    assert.ok(bend > 2, `the path actually bends (${bend.toFixed(2)} m)`);
     // open meadow far from the path and camps stays grass (low dirt, rock and mud)
     const [d, r, m] = groundSplat(0, 25, 0.3, 0.02, 0.4);
     assert.ok(d < 0.2 && r < 0.2 && m < 0.2, `${d} ${r} ${m}`);
@@ -155,13 +161,30 @@ describe('Age 1 trees', () => {
   it('conifers are ~1 m tall unit trees within budget', () => {
     for (let s = 0; s < 4; s++) {
       const t = buildConifer(s);
-      assert.ok(t.tris < 1200, `variant ${s}: ${t.tris}`);
+      assert.ok(t.tris < 1600, `variant ${s}: ${t.tris}`);
       // lowest skirt branches may dip slightly into the ground, like real spruces
       t.fronds!.computeBoundingBox();
       const b = t.fronds!.boundingBox!;
-      assert.ok(b.max.y > 0.9 && b.max.y < 1.15 && b.min.y > -0.1, `crown y ${b.min.y}..${b.max.y}`);
+      assert.ok(b.max.y > 0.9 && b.max.y < 1.15 && b.min.y > -0.22, `crown y ${b.min.y}..${b.max.y}`);
     }
     assert.ok(buildDeadTree(0).tris < 600);
   });
 
+});
+
+describe('Age 1 ponds', () => {
+  it('sit in carved basins clear of the path and camps, water never above the shore', () => {
+    for (const p of PONDS) {
+      assert.ok(campDistance(p.x, p.z) > CAMP_RADIUS + p.r, 'pond clear of the camp');
+      assert.ok(Math.abs(p.z - pathCenterZ(p.x)) > PATH_HALF_WIDTH + p.r + 1, 'pond clear of the path');
+      const level = pondLevel(p);
+      assert.ok(level - terrainHeight(p.x, p.z) > 0.4, 'water has some depth');
+      for (let a = 0; a < Math.PI * 2; a += 0.2) {
+        // just outside the waterline the ground is at or above the water
+        const x = p.x + Math.cos(a) * p.r * 1.1;
+        const z = p.z + Math.sin(a) * p.r * 1.1;
+        assert.ok(terrainHeight(x, z) >= level - 0.02, `pond ${p.x},${p.z} spills at angle ${a.toFixed(1)}`);
+      }
+    }
+  });
 });

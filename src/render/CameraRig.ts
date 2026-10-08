@@ -117,7 +117,9 @@ export class CameraRig {
       const v = this.keys * P.keySpeed + this.edge * P.edgeSpeed;
       if (v) this.nudge(v * dt);
     }
-    this.focus += (this.goal - this.focus) * (1 - Math.exp(-P.ease * dt));
+    this.focus += (this.goal - this.focus) * (1 - Math.exp(-P.ease * Math.max(0, dt)));
+    // Never let the eye leave the lane: past the ends it would sit inside the arena's rock walls.
+    this.focus = MathUtils.clamp(this.focus, Math.min(P.min, -CAMERA.menuSweep.amplitude), Math.max(P.max, CAMERA.menuSweep.amplitude));
     this.apply();
   }
 

@@ -35,7 +35,8 @@ PH = [
 
 # Ground textures (Poly Haven, CC0): (public file, polyhaven id) - info.json in assets_src/polyhaven_textures
 TEX = [
-    ('textures/age1/ground_leafy_grass.jpg', 'leafy_grass'),
+    ('textures/age1/ground_rocky_terrain_02.jpg', 'rocky_terrain_02'),
+    ('textures/age1/ground_forrest_ground_01.jpg', 'forrest_ground_01'),
     ('textures/age1/ground_dirt_floor.jpg', 'dirt_floor'),
     ('textures/age1/ground_rocky_trail_02.jpg', 'rocky_trail_02'),
     ('textures/age1/ground_brown_mud_dry.jpg', 'brown_mud_dry'),
