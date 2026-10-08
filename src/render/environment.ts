@@ -409,8 +409,10 @@ const CLIFF_SIZE: Record<string, { w: number; h: number }> = {
  *  - end wall past the enemy camp (closes the far end of the view),
  *  - a short wall behind the player camp (seen only in the menu drift).
  */
-const WALLS: Array<{ from: [number, number]; to: [number, number]; height: [number, number]; face: number; jitter: number; boulders?: boolean }> = [
+const WALLS: Array<{ from: [number, number]; to: [number, number]; height: [number, number]; face: number; jitter: number; boulders?: boolean; offset?: number }> = [
   { from: [-100, -31], to: [104, -33], height: [20, 32], face: 0, jitter: 4 },
+  // second, taller row behind the back wall, staggered half a section, so no gap ever shows sky
+  { from: [-104, -41], to: [108, -43], height: [26, 38], face: 0, jitter: 3, offset: 7 },
   { from: [94, -34], to: [98, 44], height: [26, 36], face: -Math.PI / 2, jitter: 3 },
   { from: [-98, -30], to: [-100, 6], height: [18, 26], face: Math.PI / 2, jitter: 3 },
 ];
@@ -430,7 +432,7 @@ function addMountains(scene: Scene, assets: AssetLibrary): void {
     const [x0, z0] = wall.from;
     const [x1, z1] = wall.to;
     const len = Math.hypot(x1 - x0, z1 - z0);
-    for (let d = 0; d < len; ) {
+    for (let d = wall.offset ?? 0; d < len; ) {
       const pool = wall.boulders ? boulders : kinds;
       if (pool.length === 0) break;
       const kind = pool[n++ % pool.length]!;
