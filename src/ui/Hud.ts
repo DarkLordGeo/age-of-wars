@@ -9,6 +9,7 @@ export interface HudHandlers {
   onUpgrade: (upgradeId: string) => void;
   onAdvanceAge: () => void;
   onRestart: () => void;
+  onMainMenu: () => void;
   onToggleFollow: () => void;
   onOverview: () => void;
 }
@@ -33,10 +34,12 @@ export class Hud {
   private readonly slots: HTMLElement[] = [];
   private readonly unitOrder: string[];
   private sinceRefresh = 1;
+  /** False while a menu is open: the HUD is hidden and ignores hotkeys. */
+  private active = true;
   private toastTimer = 0;
 
   constructor(
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     private readonly content: Content,
     handlers: HudHandlers,
   ) {
@@ -73,7 +76,8 @@ export class Hud {
         <div class="hint">A/D or drag: pan · wheel: zoom<br>1-${this.unitOrder.length}: train · click queue slot: cancel</div>
       </div>
       <div class="overlay" data-id="overlay"><h1 data-id="title"></h1>
-        <button class="btn" data-id="restart">Play again</button></div>`;
+        <div class="overlay-actions"><button class="btn" data-id="restart">Play again</button>
+        <button class="btn" data-id="mainmenu">Main menu</button></div></div>`;
     this.q = <T extends HTMLElement>(id: string) => root.querySelector<T>(`[data-id="${id}"]`)!;
 
     const unitsEl = this.q('units');
@@ -119,15 +123,22 @@ export class Hud {
     this.q('follow').addEventListener('click', () => handlers.onToggleFollow());
     this.q('overview').addEventListener('click', () => handlers.onOverview());
     this.q('restart').addEventListener('click', () => handlers.onRestart());
+    this.q('mainmenu').addEventListener('click', () => handlers.onMainMenu());
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat || !this.active) return;
       const digit = /^Digit([1-9])$/.exec(e.code);
       const id = digit ? this.unitOrder[Number(digit[1]) - 1] : undefined;
       if (id) handlers.onEnqueue(id);
       else if (e.code === 'KeyF') handlers.onToggleFollow();
       else if (e.code === 'KeyO') handlers.onOverview();
     });
+  }
+
+  /** Show/hide the HUD (hidden while the main or pause menu is open). */
+  setActive(active: boolean): void {
+    this.active = active;
+    this.root.classList.toggle('hidden', !active);
   }
 
   /** Unit portraits (data URLs by unit id), rendered once the models are loaded. */

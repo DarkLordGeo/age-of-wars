@@ -12,6 +12,9 @@ export class CameraRig {
   followEnabled: boolean = CAMERA.follow.enabledByDefault;
   /** True while zoomed all the way out so both bases are visible. */
   overview = false;
+  /** Menu background: slow, low, swaying shot that follows the fight; ignores player input. */
+  private cinematic = false;
+  private cineT = 0;
 
   private focusX = 0;
   private targetX = 0;
@@ -35,6 +38,7 @@ export class CameraRig {
     dom.addEventListener(
       'wheel',
       (e) => {
+        if (this.cinematic) return;
         this.overview = false;
         this.setZoom(this.targetDistance * (1 + Math.sign(e.deltaY) * CAMERA.zoomStep));
       },
@@ -43,7 +47,7 @@ export class CameraRig {
     dom.addEventListener('pointerdown', () => (this.dragging = true));
     window.addEventListener('pointerup', () => (this.dragging = false));
     window.addEventListener('pointermove', (e) => {
-      if (!this.dragging) return;
+      if (!this.dragging || this.cinematic) return;
       this.pan(-e.movementX * CAMERA.pan.dragSpeed * this.distance);
     });
     this.apply();
@@ -53,6 +57,16 @@ export class CameraRig {
   snapTo(x: number): void {
     this.focusX = this.targetX = MathUtils.clamp(x, -this.limit, this.limit);
     this.apply();
+  }
+
+  /** Menu background camera on/off. */
+  setCinematic(on: boolean): void {
+    this.cinematic = on;
+    this.overview = false;
+    this.followPausedFor = 0;
+    this.followEnabled = on || CAMERA.follow.enabledByDefault;
+    this.targetDistance = on ? 30 : CAMERA.distance.initial;
+    this.distance = this.targetDistance;
   }
 
   toggleFollow(): void {
@@ -80,9 +94,13 @@ export class CameraRig {
 
   /** `frontlineX` is the sim's battle position; null when nothing should be tracked. */
   update(dt: number, frontlineX: number | null): void {
-    const speed = CAMERA.pan.keySpeed * (this.distance / CAMERA.distance.initial);
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) this.pan(-speed * dt);
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) this.pan(speed * dt);
+    if (this.cinematic) {
+      this.cineT += dt;
+    } else {
+      const speed = CAMERA.pan.keySpeed * (this.distance / CAMERA.distance.initial);
+      if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) this.pan(-speed * dt);
+      if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) this.pan(speed * dt);
+    }
 
     this.followPausedFor = Math.max(0, this.followPausedFor - dt);
     if (this.followEnabled && !this.overview && this.followPausedFor === 0 && frontlineX !== null) {
@@ -110,11 +128,20 @@ export class CameraRig {
 
   private apply(): void {
     const d = this.distance;
-    this.camera.position.set(
-      this.focusX + d * this.cosEl * this.sinAz,
-      d * this.sinEl,
-      d * this.cosEl * this.cosAz,
-    );
+    let sinAz = this.sinAz;
+    let cosAz = this.cosAz;
+    let sinEl = this.sinEl;
+    let cosEl = this.cosEl;
+    if (this.cinematic) {
+      // lower, slowly swaying shot for the menu background
+      const az = (CAMERA.azimuth + Math.sin(this.cineT * 0.12) * 14) * DEG;
+      const el = (24 + Math.sin(this.cineT * 0.09) * 4) * DEG;
+      sinAz = Math.sin(az);
+      cosAz = Math.cos(az);
+      sinEl = Math.sin(el);
+      cosEl = Math.cos(el);
+    }
+    this.camera.position.set(this.focusX + d * cosEl * sinAz, d * sinEl, d * cosEl * cosAz);
     this.camera.lookAt(this.focusX, CAMERA.focusHeight, 0);
   }
 }

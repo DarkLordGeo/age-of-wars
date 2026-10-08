@@ -5,6 +5,7 @@ import type { EnqueueResult } from '../sim/types';
 import { GameRenderer, TEAM_TINT } from '../render/GameRenderer';
 import { World } from '../sim/World';
 import { Hud } from '../ui/Hud';
+import { Menu } from '../ui/Menu';
 import { renderPortraits } from '../ui/portraits';
 import { EventBus } from './EventBus';
 
@@ -14,23 +15,44 @@ const ENQUEUE_MESSAGES: Partial<Record<EnqueueResult, string>> = {
   'queue-full': 'Production queue is full',
 };
 
+/** AI profile both sides use in the main menu's background battle. */
+const ATTRACT_PROFILE = 'normal';
+/** Seconds the finished background battle lingers before a new one starts. */
+const ATTRACT_RESTART_DELAY = 4;
+/** Evenly matched AIs can stalemate; start a fresh battle after this long anyway. */
+const ATTRACT_MAX_TIME = 6 * 60;
+
+/**
+ * - `menu`: main menu over a live AI-vs-AI battle (blurred behind the panel), HUD hidden.
+ * - `playing`: a match against the chosen difficulty.
+ * - `paused`: the match is frozen, pause menu over it.
+ */
+type Mode = 'menu' | 'playing' | 'paused';
+
 /** Composition root: owns the World and wires sim → bus → (renderer, audio) and HUD → sim. */
 export class Game {
   world: World;
+  mode: Mode = 'menu';
   readonly bus = new EventBus();
   readonly sound = new PlaceholderSoundBank();
   private readonly renderer: GameRenderer;
   private readonly hud: Hud;
+  private readonly menu: Menu;
+  private difficulty: string;
   private accumulator = 0;
   private last = performance.now();
+  private attractEndedFor = 0;
 
   constructor(
     canvasHost: HTMLElement,
     hudHost: HTMLElement,
     readonly assets: AssetLibrary,
-    private readonly difficulty: string,
+    /** Starting difficulty; `startInMenu = false` jumps straight into a match (e.g. ?play=hard). */
+    difficulty: string,
+    startInMenu = true,
   ) {
-    this.world = new World({ difficulty });
+    this.difficulty = difficulty;
+    this.world = startInMenu ? this.attractWorld() : new World({ difficulty });
     this.renderer = new GameRenderer(canvasHost, assets, this.bus);
     this.renderer.setWorld(this.world);
     bindAudio(this.bus, this.sound);
@@ -45,37 +67,105 @@ export class Game {
         if (this.world.purchaseUpgrade('player', id) === 'unaffordable') this.hud.toast('Not enough gold');
       },
       onAdvanceAge: () => this.world.advanceAge('player'),
-      onRestart: () => this.restart(),
+      onRestart: () => this.startMatch(this.difficulty),
+      onMainMenu: () => this.toMainMenu(),
       onToggleFollow: () => this.renderer.rig.toggleFollow(),
       onOverview: () => this.renderer.rig.toggleOverview(),
     });
     // Card portraits come from the same models the battlefield uses (player colours).
     this.hud.setPortraits(renderPortraits(assets, Object.values(this.world.content.units), TEAM_TINT.player));
+
+    const post = this.renderer.post;
+    this.menu = new Menu(document.body, {
+      onPlay: (d) => this.startMatch(d),
+      onResume: () => this.resume(),
+      onRestart: () => this.startMatch(this.difficulty),
+      onQuit: () => this.toMainMenu(),
+      onQuality: (q) => post.setQuality(q),
+      getQuality: () => post.setting,
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape' || e.repeat) return;
+      if (this.menu.isOpen) this.menu.escape();
+      else if (this.mode === 'playing' && this.world.status === 'playing') this.pause();
+    });
+
+    if (startInMenu) this.toMainMenu();
+    else this.mode = 'playing';
   }
 
   start(): void {
     requestAnimationFrame(this.frame);
   }
 
-  private restart(): void {
-    this.world = new World({ difficulty: this.difficulty });
+  private attractWorld(): World {
+    // Different seed per battle so the background fight doesn't repeat exactly.
+    return new World({ difficulty: ATTRACT_PROFILE, autoPlayer: ATTRACT_PROFILE, seed: Math.floor(Math.random() * 1e9) });
+  }
+
+  private toMainMenu(): void {
+    this.mode = 'menu';
+    this.attractEndedFor = 0;
+    this.world = this.attractWorld();
     this.renderer.setWorld(this.world);
+    this.renderer.rig.setCinematic(true);
+    this.hud.setActive(false);
+    this.menu.openMain();
+  }
+
+  private startMatch(difficulty: string): void {
+    this.difficulty = difficulty;
+    this.world = new World({ difficulty });
+    this.renderer.setWorld(this.world);
+    this.renderer.rig.setCinematic(false);
+    this.menu.close();
+    this.hud.setActive(true);
+    this.mode = 'playing';
+  }
+
+  private pause(): void {
+    this.mode = 'paused';
+    this.hud.setActive(false);
+    this.menu.openPause();
+  }
+
+  private resume(): void {
+    this.menu.close();
+    this.hud.setActive(true);
+    this.mode = 'playing';
+    this.last = performance.now();
   }
 
   private frame = (now: number): void => {
     const dt = Math.min((now - this.last) / 1000, GAME.maxFrameDelta);
     this.last = now;
 
-    this.accumulator += dt;
-    while (this.accumulator >= GAME.fixedStep) {
-      this.world.step(GAME.fixedStep);
-      this.accumulator -= GAME.fixedStep;
+    if (this.mode !== 'paused') {
+      this.accumulator += dt;
+      while (this.accumulator >= GAME.fixedStep) {
+        this.world.step(GAME.fixedStep);
+        this.accumulator -= GAME.fixedStep;
+      }
+    } else {
+      this.accumulator = 0;
     }
     this.world.drainEvents(this.bus.dispatch);
 
-    this.renderer.render(dt);
+    // Background battle: when one side wins (or it drags on), start a fresh one after a short pause.
+    if (this.mode === 'menu' && (this.world.status !== 'playing' || this.world.time > ATTRACT_MAX_TIME)) {
+      this.attractEndedFor += dt;
+      if (this.attractEndedFor > ATTRACT_RESTART_DELAY) {
+        this.attractEndedFor = 0;
+        this.world = this.attractWorld();
+        this.renderer.setWorld(this.world);
+      }
+    }
+
+    // Paused: keep rendering (fire, wind, clouds still move) but the battle is frozen.
+    this.renderer.render(dt, this.mode === 'paused');
     const rig = this.renderer.rig;
-    this.hud.update(this.world, { follow: rig.followEnabled, overview: rig.overview }, dt);
+    if (this.mode === 'playing') this.hud.update(this.world, { follow: rig.followEnabled, overview: rig.overview }, dt);
     requestAnimationFrame(this.frame);
   };
 }

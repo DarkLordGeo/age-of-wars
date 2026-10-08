@@ -29,7 +29,7 @@ export class GameRenderer {
   private readonly freeViews = new Map<string, UnitView[]>();
   private readonly baseViews = {} as Record<Team, BaseView>;
   private readonly projectileRenderer: ProjectileRenderer;
-  private readonly post: PostFx;
+  readonly post: PostFx;
   private readonly env: Environment;
   private world: World | null = null;
   private frame = 0;
@@ -79,12 +79,13 @@ export class GameRenderer {
     this.rig.snapTo(0);
   }
 
-  render(dt: number): void {
+  /** `frozen`: the match is paused; units hold their pose while the scenery keeps animating. */
+  render(dt: number, frozen = false): void {
     const world = this.world;
     if (!world) return;
     this.rig.update(dt, world.units.length > 0 ? world.frontlineX : null);
     this.syncViews(world);
-    for (const view of this.views.values()) view.update(dt, this.rig.camera);
+    for (const view of this.views.values()) view.update(frozen ? 0 : dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
     this.env.update(dt, this.rig.camera);

@@ -1,20 +1,26 @@
 import type { AiProfile, Role, UnitDef } from '../config/schema';
 import { createRng } from './rng';
 import type { World } from './World';
+import { teamDir, type Team } from './types';
 
 /**
  * Opponent controller. Uses exactly the public commands the player has (enqueueUnit,
  * purchaseUpgrade, advanceAge) and spends its own gold; behaviour is driven by an AiProfile.
+ * Normally plays the enemy; the menu's background battle also runs one for the player team.
  */
 export class EnemyAi {
   private timer: number;
   private readonly rng: () => number;
   private readonly counts: Record<Role, number> = { melee: 0, ranged: 0, tank: 0 };
 
+  private readonly foe: Team;
+
   constructor(
     private readonly world: World,
     readonly profile: AiProfile,
+    readonly team: Team = 'enemy',
   ) {
+    this.foe = team === 'enemy' ? 'player' : 'enemy';
     this.rng = createRng(profile.seed);
     this.timer = profile.thinkInterval;
   }
@@ -29,21 +35,24 @@ export class EnemyAi {
   private think(): void {
     const w = this.world;
     const p = this.profile;
-    const me = w.teams.enemy;
+    const team = this.team;
+    const me = w.teams[team];
 
-    if (w.canAdvanceAge('enemy')) w.advanceAge('enemy');
+    if (w.canAdvanceAge(team)) w.advanceAge(team);
 
-    const myPower = power(w.alive.enemy);
-    const foePower = power(w.alive.player);
-    const foeFront = w.alive.player[w.alive.player.length - 1];
-    const myBase = w.bases.enemy;
-    const threatened = !!foeFront && foeFront.x > myBase.x - myBase.radius - p.threatDistance;
+    const myPower = power(w.alive[team]);
+    const foeAlive = w.alive[this.foe];
+    const foePower = power(foeAlive);
+    // alive lists are sorted by x: the foe closest to our base is at our end of the list
+    const foeFront = teamDir(team) === -1 ? foeAlive[foeAlive.length - 1] : foeAlive[0];
+    const myBase = w.bases[team];
+    const threatened = !!foeFront && Math.abs(foeFront.x - myBase.x) < myBase.radius + p.threatDistance;
     const winning = myPower / (foePower + 1) >= p.aggressionRatio && foePower > 0;
 
     if (p.buyUpgrades && !threatened) {
-      for (const up of w.availableUpgrades('enemy')) {
+      for (const up of w.availableUpgrades(team)) {
         if (me.gold >= up.cost + p.goldReserve) {
-          w.purchaseUpgrade('enemy', up.id);
+          w.purchaseUpgrade(team, up.id);
           break;
         }
       }
@@ -53,7 +62,7 @@ export class EnemyAi {
     for (let guard = 0; guard < p.maxQueue && me.queue.length < p.maxQueue; guard++) {
       const def = this.pickUnit(threatened, winning);
       if (!def || me.gold < def.cost + reserve) break;
-      if (w.enqueueUnit('enemy', def.id) !== 'ok') break;
+      if (w.enqueueUnit(team, def.id) !== 'ok') break;
     }
   }
 
@@ -61,11 +70,11 @@ export class EnemyAi {
   private pickUnit(threatened: boolean, winning: boolean): UnitDef | null {
     const w = this.world;
     const p = this.profile;
-    const me = w.teams.enemy;
+    const me = w.teams[this.team];
 
     this.counts.melee = this.counts.ranged = this.counts.tank = 0;
     let total = 1;
-    for (const u of w.alive.enemy) {
+    for (const u of w.alive[this.team]) {
       this.counts[u.def.role]++;
       total++;
     }
@@ -74,7 +83,7 @@ export class EnemyAi {
       total++;
     }
 
-    const unlocked = Object.values(w.content.units).filter((u) => w.unitUnlocked('enemy', u.id));
+    const unlocked = Object.values(w.content.units).filter((u) => w.unitUnlocked(this.team, u.id));
     const pool = threatened ? unlocked.filter((u) => u.cost <= me.gold) : unlocked;
     if (pool.length === 0) return null;
 

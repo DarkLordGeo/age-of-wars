@@ -29,6 +29,8 @@ export interface WorldOptions {
   difficulty?: string;
   /** Set false to run without the enemy AI (tests, scripted scenarios). */
   ai?: boolean;
+  /** AI profile key to also auto-play the player team (the main menu's background battle). */
+  autoPlayer?: string;
   seed?: number;
 }
 
@@ -54,6 +56,8 @@ export class World {
   readonly bases: Record<Team, Base>;
   readonly teams: Record<Team, TeamState>;
   readonly ai: EnemyAi | null;
+  /** Present only when the player team is AI-driven (attract mode). */
+  readonly playerAi: EnemyAi | null;
 
   time = 0;
   status: GameStatus = 'playing';
@@ -82,6 +86,8 @@ export class World {
     };
     for (const team of TEAMS) this.equipTurrets(team);
     this.ai = opts.ai !== false && profile ? new EnemyAi(this, profile) : null;
+    const auto = opts.autoPlayer ? this.content.ai[opts.autoPlayer] : undefined;
+    this.playerAi = auto ? new EnemyAi(this, { ...auto, seed: auto.seed + 101 }, 'player') : null;
   }
 
   // ---------------------------------------------------------------- commands
@@ -179,6 +185,7 @@ export class World {
       ts.gold += ts.stat('base', 'income', GAME.economy.baseIncomePerSec * ts.incomeMultiplier) * dt;
     }
     this.ai?.update(dt);
+    this.playerAi?.update(dt);
 
     for (const team of TEAMS) this.sortLane(team);
     this.updateProduction(dt);

@@ -27,6 +27,15 @@ export function excludeFromAO(obj: Object3D): void {
 
 export type Quality = 'low' | 'medium' | 'high';
 
+const QUALITY_KEY = 'aow.quality';
+function savedQuality(): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(QUALITY_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Post-processing: MSAA scene render -> GTAO ambient occlusion (high) -> subtle bloom ->
  * tone mapping/sRGB (OutputPass) -> colour grade + vignette.
@@ -69,7 +78,7 @@ const GradeShader = {
 
 export class PostFx {
   quality: Quality;
-  private readonly forced: boolean;
+  private forced: boolean;
   private composer: EffectComposer | null = null;
   private gtao: GTAOPass | null = null;
   private bloom: UnrealBloomPass | null = null;
@@ -88,9 +97,28 @@ export class PostFx {
   ) {
     camera.layers.enable(NO_AO_LAYER);
     this.aoCamera.layers.set(0);
-    const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('quality') : null;
+    // ?quality= wins, then the Options menu choice saved in localStorage, else auto.
+    const q = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('quality') : null) ?? savedQuality();
     this.forced = q === 'low' || q === 'medium' || q === 'high';
     this.quality = this.forced ? (q as Quality) : 'high';
+    this.build();
+  }
+
+  /** The current setting as the Options menu shows it. */
+  get setting(): Quality | 'auto' {
+    return this.forced ? this.quality : 'auto';
+  }
+
+  /** Options menu: pick a fixed level, or 'auto' (start high, step down when slow). Persisted. */
+  setQuality(q: Quality | 'auto'): void {
+    this.forced = q !== 'auto';
+    this.quality = q === 'auto' ? 'high' : q;
+    this.slowFor = 0;
+    try {
+      localStorage.setItem(QUALITY_KEY, q);
+    } catch {
+      /* storage unavailable: setting lasts for this session */
+    }
     this.build();
   }
 
