@@ -5,7 +5,7 @@ import { teamDir } from '../sim/types';
 import { ModelAnimator } from './ModelAnimator';
 import { excludeFromAO } from './post';
 
-const LUNGE_TIME = 0.22;
+const LUNGE_TIME = 0.32;
 const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6 });
 const barFg = new MeshBasicMaterial({ color: 0x4ade80, depthTest: false });
 const barGeo = new PlaneGeometry(1, 1);
@@ -106,7 +106,7 @@ export class UnitView {
       m.position.y = -0.1 * t;
       return;
     }
-    m.userData.animate?.(this.phase, u.moving);
+    m.userData.animate?.(this.phase, u.moving, this.lunge > 0 ? 1 - this.lunge / LUNGE_TIME : 0);
     if (u.moving && !m.userData.animate) {
       m.position.y = Math.abs(Math.sin(this.phase)) * 0.12;
       m.rotation.z = Math.sin(this.phase) * 0.04;

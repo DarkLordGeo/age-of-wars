@@ -14,6 +14,8 @@ export interface AssetSpec {
   lazy?: boolean;
   /** Adds extra parts (e.g. gear parented to a bone) to every instance of the loaded GLB. */
   decorate?: (model: Object3D, tint: number) => void;
+  /** Runs once on the loaded GLB scene before it is used (e.g. auto-rigging a static model). */
+  prepare?: (scene: Object3D) => Object3D;
 }
 
 /** The part of a parsed glTF the library needs (lets tests feed parsed data directly). */
@@ -76,13 +78,15 @@ export class AssetLibrary {
       o.castShadow = true;
       o.receiveShadow = true;
     });
+    const scene = spec.prepare ? spec.prepare(gltf.scene) : gltf.scene;
     const clips = indexClips(gltf.animations);
-    const problems = validateModel(gltf.scene, clips, {
+    const problems = validateModel(scene, clips, {
       expectedHeight: spec.expectedHeight,
-      requireClips: spec.expectedHeight !== undefined, // unit-style assets are animated; scenery is not
+      // unit-style assets are animated (prepared models animate procedurally); scenery is not
+      requireClips: spec.expectedHeight !== undefined && !spec.prepare,
     });
     if (problems.length) console.warn(`[assets] "${key}" does not meet the model contract:\n - ${problems.join('\n - ')}`);
-    this.loaded.set(key, { scene: gltf.scene, clips });
+    this.loaded.set(key, { scene, clips });
     return problems;
   }
 

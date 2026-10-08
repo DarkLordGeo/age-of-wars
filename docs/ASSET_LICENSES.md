@@ -16,6 +16,9 @@ None of the assets below require attribution. Optional courtesy credit: Poly Hav
 
 | Asset | Source | Author | License | Source URL | Local file | Attribution required | Processing note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| Caveman with club | Hyper3D Rodin (AI-generated) | Lasha Ergeshidze (prompt) | Hyper3D terms for the account's plan (to confirm) | https://hyper3d.ai/workspace/rodin/f6cd7319-f9cf-4bb0-8061-dae54761369d | `public/models/caveman_club.glb` | see Hyper3D terms | baked to vertex colours, ~14k tris (assets_src/rodin) |
+| Caveman with slingshot | Hyper3D Rodin (AI-generated) | Lasha Ergeshidze (prompt) | Hyper3D terms for the account's plan (to confirm) | https://hyper3d.ai/workspace/rodin/c55d6a52-1fb5-43f7-a915-1c394bf072be | `public/models/caveman_slingshot.glb` | see Hyper3D terms | baked to vertex colours, ~14k tris (assets_src/rodin) |
+| Stone hut | Hyper3D Rodin (AI-generated) | Lasha Ergeshidze (prompt) | Hyper3D terms for the account's plan (to confirm) | https://hyper3d.ai/workspace/rodin/ded815de-a63a-4913-90a1-21bb21e589b3 | `public/models/stone_hut.glb` | see Hyper3D terms | baked to vertex colours, ~14k tris (assets_src/rodin) |
 | Boulder 01 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/boulder_01 | `public/models/env/rocks/rock_boulder_01.glb` | none |  |
 | Namaqualand Boulder 02 | Poly Haven | Greg Zaal (Photography), Rico Cilliers (modeling) | CC0 1.0 | https://polyhaven.com/a/namaqualand_boulder_02 | `public/models/env/rocks/rock_boulder_02.glb` | none |  |
 | Namaqualand Boulder 03 | Poly Haven | Jenelle van Heerden (modeling), Dario Barresi (Photography) | CC0 1.0 | https://polyhaven.com/a/namaqualand_boulder_03 | `public/models/env/rocks/rock_boulder_03.glb` | none |  |

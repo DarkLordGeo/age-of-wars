@@ -1,4 +1,4 @@
-import {
+import { Box3,
   BufferAttribute,
   CircleGeometry,
   ConeGeometry,
@@ -33,6 +33,11 @@ export interface SettlementOptions {
   keepClear?: ReadonlyArray<{ x: number; z: number; r: number }>;
   /** Disable particle effects (tests / headless). */
   fx?: boolean;
+  /**
+   * A ready-made building (e.g. the imported stone hut) to stand in place of the first small
+   * hut. It is scaled to that hut's footprint, sat on the ground and turned to face the lane.
+   */
+  building?: Object3D;
 }
 
 export const SETTLEMENT = {
@@ -59,7 +64,11 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   const huts = variant % 2 === 0
     ? [[-8.2, -4.6, 2.2], [-3.4, -8.0, 2.0], [2.8, -7.2, 1.8]]
     : [[-8.6, -3.2, 2.0], [-4.6, -8.2, 2.3], [2.2, -7.6, 1.7]];
-  for (const [x, z, r] of huts) hut(b, rnd, x!, z!, r!, 1.5 + rnd() * 0.3, r! * 1.15 + 0.6);
+  huts.forEach(([x, z, r], i) => {
+    if (i === 0 && opts.building) return;
+    hut(b, rnd, x!, z!, r!, 1.5 + rnd() * 0.3, r! * 1.15 + 0.6);
+  });
+  const slot = huts[0]!;
 
   tent(b, rnd, variant % 2 === 0 ? -9.4 : -9.0, variant % 2 === 0 ? 4.4 : 3.6, 2.0, 3.6);
   woodPile(b, rnd, 3.4, -4.6, variant % 2 === 0 ? 0.25 : -0.3);
@@ -69,6 +78,17 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   campfireStructure(b, rnd, fireAt.x, fireAt.z);
 
   const group = b.build();
+  if (opts.building) {
+    const bld = opts.building;
+    bld.rotation.y = -Math.PI / 2; // source faces +Z; turn the doorway toward the lane (+X)
+    bld.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(bld);
+    const span = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+    const k = (slot[2]! * 2.5) / span;
+    bld.scale.multiplyScalar(k);
+    bld.position.set(slot[0]!, -box.min.y * k - 0.05, slot[1]!);
+    group.add(bld);
+  }
   group.name = 'Settlement';
 
   // TeamColor elements are separate meshes so AssetLibrary-style tinting is per base.
