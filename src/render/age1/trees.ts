@@ -15,6 +15,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng32 } from './builder';
 import { age1Material, age1Texture } from './materials';
+import { excludeFromAO } from '../post';
 import { addSway } from './wind';
 
 /**
@@ -206,6 +207,7 @@ export function addTreeInstances(scene: Scene, variant: TreeVariant, placements:
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+    if (geo !== variant.trunk) excludeFromAO(mesh); // alpha-cut fronds
     scene.add(mesh);
   }
 }

@@ -1,4 +1,5 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Points, PointsMaterial, type Scene } from 'three';
+import { excludeFromAO } from '../post';
 import { rng32 } from './builder';
 
 /**
@@ -50,6 +51,7 @@ export class DustMotes {
     });
     this.points = new Points(geo, mat);
     this.points.frustumCulled = false;
+    excludeFromAO(this.points);
     scene.add(this.points);
   }
 

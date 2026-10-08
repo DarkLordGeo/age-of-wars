@@ -4,7 +4,7 @@ import {
   ConeGeometry,
   DirectionalLight,
   DodecahedronGeometry,
-  Fog,
+  FogExp2,
   HemisphereLight,
   InstancedMesh,
   Matrix4,
@@ -14,23 +14,28 @@ import {
   Quaternion,
   Scene,
   Vector3,
+  type Camera,
+  type WebGLRenderer,
 } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import { GAME } from '../config/game';
 import { createRng } from '../sim/rng';
 import { DustMotes } from './age1/dust';
+import { createSky } from './age1/sky';
 import { addGrassTufts, type TuftPlacement } from './age1/grass';
 import { createTerrainMaterial } from './age1/terrainMaterial';
 import { addTreeInstances, buildConifer, buildDeadTree, type TreePlacement } from './age1/trees';
 import { WIND } from './age1/wind';
+import { NO_AO_LAYER } from './post';
 import { addInstances, partsOf, type Placement } from './sceneryInstancing';
 import { campDistance, CAMP_RADIUS, LANE_CLEARANCE, pathCenterZ, PATH_HALF_WIDTH, terrainHeight } from './terrain';
 
-const SKY = 0xa7c8e6;
+/** Direction toward the sun (also drives the sky shader and the shadow light). */
+export const SUN_DIR = new Vector3(-40, 60, 40).normalize();
 
 export interface Environment {
-  /** Advances wind, dust and other ambient animation. */
-  update(dt: number): void;
+  /** Advances wind, dust, clouds and other ambient animation. */
+  update(dt: number, camera: Camera): void;
 }
 
 /**
@@ -40,14 +45,16 @@ export interface Environment {
  * (src/assets/scenery.ts) via instancing; library assets that fail to load fall back to
  * procedural shapes.
  */
-export function buildEnvironment(scene: Scene, assets: AssetLibrary): Environment {
-  scene.background = new Color(SKY);
-  scene.fog = new Fog(SKY, 130, 330);
+export function buildEnvironment(scene: Scene, assets: AssetLibrary, renderer: WebGLRenderer | null = null): Environment {
+  // Physical sky + image-based lighting baked from it; fog matched to the horizon haze.
+  const sky = createSky(scene, renderer, SUN_DIR);
+  scene.fog = new FogExp2(sky.horizon.getHex(), 0.0034);
 
-  scene.add(new HemisphereLight(0xcfe6ff, 0x4a5a3a, 0.9));
+  // Weak hemisphere fill on top of the IBL (keeps shadowed sides from going flat grey).
+  scene.add(new HemisphereLight(0xcfe6ff, 0x4a5a3a, renderer ? 0.4 : 0.9));
 
-  const sun = new DirectionalLight(0xfff1d6, 2.6);
-  sun.position.set(-40, 60, 40);
+  const sun = new DirectionalLight(0xfff0d8, 3.0);
+  sun.position.copy(SUN_DIR).multiplyScalar(82);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const cam = sun.shadow.camera;
@@ -59,6 +66,8 @@ export function buildEnvironment(scene: Scene, assets: AssetLibrary): Environmen
   cam.far = 220;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.05;
+  sun.shadow.radius = 2.5; // softer PCF penumbra
+  sun.shadow.camera.layers.enable(NO_AO_LAYER); // foliage lives on the no-AO layer but must cast shadows
   scene.add(sun);
 
   scene.add(buildTerrain());
@@ -71,9 +80,10 @@ export function buildEnvironment(scene: Scene, assets: AssetLibrary): Environmen
 
   const dust = new DustMotes(scene, { minX: -70, maxX: 70, minZ: -14, maxZ: 12, maxY: 5 });
   return {
-    update(dt: number): void {
+    update(dt: number, camera: Camera): void {
       WIND.time.value += dt;
       dust.update(dt);
+      sky.update(dt, camera);
     },
   };
 }

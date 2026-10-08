@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, PCFSoftShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import { GAME } from '../config/game';
 import type { EventBus } from '../game/EventBus';
@@ -8,7 +8,7 @@ import { TEAMS, type Team } from '../sim/types';
 import { BaseView } from './BaseView';
 import { CameraRig } from './CameraRig';
 import { buildEnvironment, type Environment } from './environment';
-import { FxLayer } from './FxLayer';
+import { PostFx } from './post';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { UnitView } from './UnitView';
 
@@ -29,7 +29,7 @@ export class GameRenderer {
   private readonly freeViews = new Map<string, UnitView[]>();
   private readonly baseViews = {} as Record<Team, BaseView>;
   private readonly projectileRenderer: ProjectileRenderer;
-  private readonly fx: FxLayer;
+  private readonly post: PostFx;
   private readonly env: Environment;
   private world: World | null = null;
   private frame = 0;
@@ -44,23 +44,19 @@ export class GameRenderer {
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    this.renderer.shadowMap.type = PCFShadowMap;
     host.appendChild(this.renderer.domElement);
 
-    this.env = buildEnvironment(this.scene, this.assets);
+    this.env = buildEnvironment(this.scene, this.assets, this.renderer);
     this.projectileRenderer = new ProjectileRenderer(this.scene);
-    this.fx = new FxLayer(this.scene, bus);
     this.rig = new CameraRig(this.renderer.domElement, GAME.baseOffset);
+    this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
 
     bus.on('attack', (e) => {
       if (e.sourceKind === 'unit') this.views.get(e.sourceId)?.triggerAttack();
       else this.baseViews[e.team]?.triggerRecoil(e.sourceId);
     });
-    bus.on('baseDamage', (e) => this.baseViews[e.team]?.triggerShake());
-    bus.on('death', (e) => {
-      const v = this.views.get(e.unitId);
-      if (v) this.fx.deathAt(v.unit.x, v.unit.z);
-    });
+    // No hit/death effects yet (removed on request); the camp itself stays still on hits.
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -91,9 +87,8 @@ export class GameRenderer {
     for (const view of this.views.values()) view.update(dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
-    this.fx.update(dt);
-    this.env.update(dt);
-    this.renderer.render(this.scene, this.rig.camera);
+    this.env.update(dt, this.rig.camera);
+    this.post.render(dt);
   }
 
   private syncViews(world: World): void {
@@ -141,5 +136,6 @@ export class GameRenderer {
     const h = this.host.clientHeight;
     this.renderer.setSize(w, h);
     this.rig.resize(w, h);
+    this.post.setSize(w, h);
   }
 }

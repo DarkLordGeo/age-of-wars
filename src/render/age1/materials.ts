@@ -1,6 +1,7 @@
 import {
   DoubleSide,
   MeshStandardMaterial,
+  NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
@@ -26,7 +27,8 @@ export function age1Texture(file: string, repeat = 1): Texture | null {
   let tex: Texture | null = null;
   if (loader) {
     tex = loader.load(DIR + file);
-    tex.colorSpace = SRGBColorSpace;
+    // Normal maps (*_nor.*) are data, not colour.
+    tex.colorSpace = file.includes('_nor.') ? NoColorSpace : SRGBColorSpace;
     tex.wrapS = tex.wrapT = RepeatWrapping;
     tex.repeat.set(repeat, repeat);
     tex.anisotropy = 4;

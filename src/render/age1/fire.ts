@@ -9,6 +9,7 @@ import {
   SpriteMaterial,
   type Texture,
 } from 'three';
+import { excludeFromAO } from '../post';
 
 /**
  * Campfire flames + rising smoke + a flickering light, as pooled sprites. Cheap: ~25 sprites
@@ -106,6 +107,7 @@ export class FireFx {
       this.light.position.y = 0.8 * opts.scale;
       this.root.add(this.light);
     }
+    excludeFromAO(this.root);
   }
 
   private make(mat: SpriteMaterial): Particle {

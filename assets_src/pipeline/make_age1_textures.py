@@ -3,7 +3,7 @@
 Run: python assets_src/pipeline/make_age1_textures.py
 (needs Pillow + numpy; run make_textures.py first for the frond/grass/thatch sources)
 
-- Ground: Poly Haven CC0 diffuse maps (assets_src/polyhaven_textures) downsized to 512 px.
+- Ground: Poly Haven CC0 diffuse + OpenGL normal maps (assets_src/polyhaven_textures) downsized to 512 px.
 - Conifer fronds/thatch: copies of assets_src/generated/* (original, procedural).
 - Grass tufts: procedural here, tuned for RTS distance (airy, bright tips).
 - Bark, log wood, hide, wattle: procedural here (original work, no third-party images).
@@ -49,6 +49,8 @@ def ground():
     for name in ['leafy_grass', 'dirt_floor', 'rocky_trail_02', 'brown_mud_dry']:
         src = os.path.join(SRC_PH, name, f'{name}_diff_1k.jpg')
         Image.open(src).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, f'ground_{name}.jpg'), quality=86, optimize=True)
+        nor = os.path.join(SRC_PH, name, f'{name}_nor_gl_1k.jpg')
+        Image.open(nor).convert('RGB').resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, f'ground_{name}_nor.jpg'), quality=90, optimize=True)
 
 
 def copies():

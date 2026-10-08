@@ -10,7 +10,9 @@ import {
   Vector3,
   type Scene,
 } from 'three';
+import { CLOUD_APPLY, CLOUD_GLSL, CLOUD_UNIFORMS } from './clouds';
 import { age1Texture } from './materials';
+import { excludeFromAO } from '../post';
 import { addSway } from './wind';
 
 /**
@@ -63,6 +65,20 @@ export function addGrassTufts(scene: Scene, file: 'grass_tuft_green.png' | 'gras
     roughness: 1,
   });
   addSway(mat, { strength: 0.16, power: 2, speed: 1.7 }, true);
+  // Same drifting cloud shadows as the terrain under the tufts.
+  const sway = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
+    sway.call(mat, shader, renderer);
+    Object.assign(shader.uniforms, CLOUD_UNIFORMS);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vCloudXZ;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvCloudXZ = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec2 vCloudXZ;\n${CLOUD_GLSL}`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${CLOUD_APPLY('vCloudXZ')}`);
+  };
+  const swayKey = mat.customProgramCacheKey();
+  mat.customProgramCacheKey = () => `${swayKey}:clouds`;
   const mesh = new InstancedMesh(geo, mat, placements.length);
   mesh.receiveShadow = true;
   mesh.castShadow = false;
@@ -81,6 +97,7 @@ export function addGrassTufts(scene: Scene, file: 'grass_tuft_green.png' | 'gras
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.computeBoundingSphere();
+  excludeFromAO(mesh);
   scene.add(mesh);
   return mesh;
 }

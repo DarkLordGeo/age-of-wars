@@ -3,6 +3,7 @@ import type { ClipName } from '../assets/contract';
 import type { Unit } from '../sim/Unit';
 import { teamDir } from '../sim/types';
 import { ModelAnimator } from './ModelAnimator';
+import { excludeFromAO } from './post';
 
 const LUNGE_TIME = 0.22;
 const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6 });
@@ -43,6 +44,7 @@ export class UnitView {
     this.fill = new Mesh(barGeo, barFg);
     this.fill.renderOrder = 11;
     this.bar.add(bg, this.fill);
+    excludeFromAO(this.bar);
     this.root.add(this.bar);
   }
 

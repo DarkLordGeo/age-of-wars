@@ -3,7 +3,6 @@ import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { Base } from '../sim/Base';
 import { teamDir } from '../sim/types';
 
-const SHAKE_TIME = 0.25;
 const RECOIL_TIME = 0.18;
 /** How long the turret's nocked arrow stays hidden after a shot (visual reload). */
 const RELOAD_SHOW_AFTER = 0.75;
@@ -22,14 +21,13 @@ interface TurretModel {
 type Ticking = Object3D & { userData: { tick?: (dt: number) => void } };
 
 /**
- * Base building plus its turret models. Shakes when hit, recoils turrets when they fire, and
+ * Base building plus its turret models. Recoils turrets when they fire, and
  * ticks animated parts (campfire, banners) that models expose as `userData.tick(dt)`.
  */
 export class BaseView {
   readonly root = new Group();
   private readonly turretModels: TurretModel[] = [];
   private readonly model: Ticking;
-  private shake = 0;
 
   constructor(
     private readonly assets: AssetLibrary,
@@ -46,12 +44,7 @@ export class BaseView {
 
   rebind(base: Base): void {
     this.base = base;
-    this.shake = 0;
     this.root.position.set(base.x, 0, 0);
-  }
-
-  triggerShake(): void {
-    this.shake = SHAKE_TIME;
   }
 
   triggerRecoil(turretIndex: number): void {
@@ -105,9 +98,5 @@ export class BaseView {
       }
       t.obj.userData.tick?.(dt);
     }
-
-    this.shake = Math.max(0, this.shake - dt);
-    const s = this.shake / SHAKE_TIME;
-    this.root.position.x = this.base.x + Math.sin(this.shake * 90) * 0.25 * s;
   }
 }
