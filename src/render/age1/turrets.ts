@@ -1,10 +1,10 @@
-import { BoxGeometry, ConeGeometry, Group, Mesh, PlaneGeometry, SphereGeometry, Vector3, type Object3D } from 'three';
+import { BoxGeometry, ConeGeometry, DodecahedronGeometry, Group, Mesh, PlaneGeometry, SphereGeometry, Vector3, type Object3D } from 'three';
 import { GAME } from '../../config/game';
 import { age1Material, teamClothMaterial } from './materials';
 import { PieceBuilder, rng32 } from './builder';
 
 /**
- * Age 1 turrets and the slot tower they sit on (original designs).
+ * Age 1 turrets and the cave mounts they sit on (original designs).
  *
  * Turret local space: origin on the platform deck, facing +X. The firing part is a child named
  * "Weapon" with its pivot at TURRET_MUZZLE above the deck, so BaseView places a turret at
@@ -15,57 +15,57 @@ export const TURRET_MUZZLE = 0.6;
 /** Deck height of slot `i` (the sim's muzzle height minus TURRET_MUZZLE). */
 export const deckY = (i: number): number => GAME.slotHeights[i]! - TURRET_MUZZLE;
 
-const H = 1.05; // tower half width
+const H = 0.75; // mount deck half width
 
 /**
- * Lashed log tower with one deck per bought slot (1..4). Rebuilt by BaseView when the slot
- * count changes. Origin on the ground at the tower centre.
+ * A turret mount on the cave: a small lashed-log deck at the slot's deck height, set on the rock.
+ * `rockY` is the rock surface under the mount (local ground = 0). Small gaps are filled with a
+ * stack of flat stones; larger ones (the top slot rises above the cave) get lashed log legs.
+ * Origin on the ground below the mount centre; the deck top is at `deckY(slot)`.
  */
-export function createSlotTower(tint: number, slots: number): Group {
-  const rnd = rng32(0x51a7 + slots);
-  const bark = age1Material('bark');
+export function createCaveMount(tint: number, slot: number, rockY: number): Group {
+  const rnd = rng32(0x51a7 + slot * 31);
   const log = age1Material('log');
+  const bark = age1Material('bark');
   const rope = age1Material('rope');
+  const stone = age1Material('stone');
   const b = new PieceBuilder();
-  const top = deckY(slots - 1);
-  const corners: Array<[number, number]> = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-  for (const [sx, sz] of corners) {
-    b.log(bark, new Vector3(sx * (H + 0.25), -0.2, sz * (H + 0.25)), new Vector3(sx * H, top + 0.9, sz * H), 0.16, { taper: 0.8, uvLen: 2.5 });
-  }
-  for (let s = 0; s < slots; s++) {
-    const y = deckY(s);
-    // deck of split logs
-    for (let z = -H - 0.2; z <= H + 0.2 + 1e-3; z += 0.24) b.log(log, new Vector3(-H - 0.3, y, z), new Vector3(H + 0.3 + rnd() * 0.12, y, z), 0.11, { taper: 0.95, sides: 6, caps: true });
-    // rails on three sides + lashings
-    for (let i = 0; i < 4; i++) {
-      const [ax, az] = corners[i]!;
-      const [bx, bz] = corners[(i + 1) % 4]!;
-      if (ax === -1 && bx === -1) continue;
-      b.log(log, new Vector3(ax * H, y + 0.55, az * H), new Vector3(bx * H, y + 0.55, bz * H), 0.05, { taper: 1 });
-      b.log(rope, new Vector3(ax * H, y - 0.1, az * H), new Vector3(ax * H, y + 0.12, az * H), 0.2, { sides: 6, taper: 1 });
+  const y = deckY(slot);
+  const gap = y - rockY;
+  if (gap > 1.6) {
+    // Lashed legs splayed onto the rock, with X bracing.
+    const corners: Array<[number, number]> = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    for (const [sx, sz] of corners) {
+      b.log(bark, new Vector3(sx * (H + 0.3), rockY - 0.3, sz * (H + 0.3)), new Vector3(sx * H, y + 0.05, sz * H), 0.13, { taper: 0.85, uvLen: 2.5 });
     }
-    // X bracing below the deck
-    const y0 = s === 0 ? 0 : deckY(s - 1);
     for (const sz of [-1, 1]) {
-      b.log(log, new Vector3(-H, y0 + 0.2, sz * H), new Vector3(H, y - 0.15, sz * H), 0.06, { taper: 1 });
-      b.log(log, new Vector3(H, y0 + 0.2, sz * H), new Vector3(-H, y - 0.15, sz * H), 0.06, { taper: 1 });
+      b.log(log, new Vector3(-H, rockY + 0.3, sz * H), new Vector3(H, y - 0.2, sz * H), 0.05, { taper: 1 });
+      b.log(log, new Vector3(H, rockY + 0.3, sz * H), new Vector3(-H, y - 0.2, sz * H), 0.05, { taper: 1 });
+    }
+  } else if (gap > 0.08) {
+    // Dry-stone stack under the deck.
+    const geo = new DodecahedronGeometry(1, 0);
+    for (let h = rockY - 0.15; h < y - 0.15; h += 0.32) {
+      for (let i = 0; i < 3; i++) {
+        const a = rnd() * Math.PI * 2;
+        const r = 0.15 + rnd() * 0.35;
+        b.place(stone, geo.clone(), new Vector3(Math.cos(a) * r, h + 0.12, Math.sin(a) * r), rnd() * Math.PI, new Vector3(0.55 + rnd() * 0.25, 0.2, 0.5 + rnd() * 0.25));
+      }
     }
   }
-  // Ladder up the back.
-  const lx = -(H + 0.45);
-  for (const dz of [-0.3, 0.3]) b.log(log, new Vector3(lx - 0.2, 0, dz), new Vector3(lx + 0.15, top + 0.1, dz), 0.045, { taper: 1 });
-  for (let y = 0.35; y < top; y += 0.45) {
-    const x = lx - 0.2 + (y / (top + 0.1)) * 0.35;
-    b.log(log, new Vector3(x, y, -0.34), new Vector3(x, y, 0.34), 0.03, { taper: 1, sides: 5 });
-  }
+  // Deck of split logs, lashed at the ends.
+  for (let z = -H; z <= H + 1e-3; z += 0.24) b.log(log, new Vector3(-H - 0.15, y - 0.11, z), new Vector3(H + 0.15 + rnd() * 0.1, y - 0.11, z), 0.11, { taper: 0.95, sides: 6, caps: true });
+  for (const sx of [-1, 1]) b.log(rope, new Vector3(sx * H, y - 0.11, -H - 0.12), new Vector3(sx * H, y - 0.11, H + 0.12), 0.13, { sides: 6, taper: 1 });
   const g = b.build();
-  g.name = 'SlotTower';
-  // Team pennant on the top corner post.
-  const flagGeo = new PlaneGeometry(0.9, 0.42);
-  flagGeo.translate(-0.45, -0.21, 0);
+  g.name = `CaveMount${slot}`;
+  // Team pennant on a short pole at the back corner.
+  const pole = new PieceBuilder().log(bark, new Vector3(-H, y - 0.1, -H), new Vector3(-H, y + 1.5, -H), 0.04, { taper: 1 }).build();
+  g.add(pole);
+  const flagGeo = new PlaneGeometry(0.7, 0.34);
+  flagGeo.translate(0.35, -0.17, 0);
   const flag = new Mesh(flagGeo, teamClothMaterial(tint));
   flag.name = 'TeamColor';
-  flag.position.set(-H, top + 0.9, -H);
+  flag.position.set(-H, y + 1.5, -H);
   flag.castShadow = true;
   g.add(flag);
   return g;

@@ -4,7 +4,7 @@ import { Box3, Vector3, type BufferAttribute, type Mesh, type MeshStandardMateri
 import { GAME } from '../src/config/game';
 import { UNITS } from '../src/config/units';
 import { createDinoRider } from '../src/render/age1/dino';
-import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot, createSlotTower, deckY, TURRET_MUZZLE } from '../src/render/age1/turrets';
+import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot, createCaveMount, deckY, TURRET_MUZZLE } from '../src/render/age1/turrets';
 import { createSettlement, SETTLEMENT } from '../src/render/age1/settlement';
 import { buildConifer, buildDeadTree } from '../src/render/age1/trees';
 import { groundSplat } from '../src/render/environment';
@@ -65,13 +65,6 @@ describe('Age 1 settlement (base.keep)', () => {
     assert.equal(verticesInside(camp, corridor), 0);
   });
 
-  it('keeps the turret tower footprint free of palisade stakes', () => {
-    const m = GAME.turretTower;
-    const r = 1.4;
-    const mount = new Box3(new Vector3(m.forward - r, 0.05, m.side - r), new Vector3(m.forward + r, 15, m.side + r));
-    assert.equal(verticesInside(camp, mount), 0);
-  });
-
   it('fits the camp footprint and a modest triangle / draw-call budget', () => {
     const box = new Box3().setFromObject(camp);
     assert.ok(box.max.x - box.min.x < 2 * SETTLEMENT.ringRadius + 3);
@@ -88,17 +81,29 @@ describe('Age 1 settlement (base.keep)', () => {
   });
 });
 
-describe('Age 1 slot tower and turrets', () => {
-  it('has one deck per bought slot, decks just below the sim muzzle heights', () => {
-    for (let n = 1; n <= GAME.slotHeights.length; n++) {
-      const tower = createSlotTower(TINT, n);
-      const box = new Box3().setFromObject(tower);
-      assert.ok(Math.abs(box.min.y) < 0.25);
-      assert.ok(box.max.y > deckY(n - 1) && box.max.y < GAME.slotHeights[n - 1]! + 2, `top ${box.max.y}`);
-      assert.ok(teamColored(tower).length >= 1);
-      assert.ok(triangles(tower) < 20000);
+describe('Age 1 cave turret mounts and turrets', () => {
+  it('puts each slot deck just below the sim muzzle height, on stones or lashed legs', () => {
+    for (let i = 0; i < GAME.slotHeights.length; i++) {
+      for (const rockY of [0, deckY(i) - 0.6, deckY(i) - 3]) {
+        const mount = createCaveMount(TINT, i, Math.max(0, rockY));
+        const box = new Box3().setFromObject(mount);
+        assert.ok(Math.abs(box.max.y - (deckY(i) + 1.5)) < 0.2, `slot ${i}: top ${box.max.y}`); // pennant pole
+        assert.ok(box.min.y > Math.max(0, rockY) - 0.5, `slot ${i}: bottom ${box.min.y}`);
+        assert.ok(teamColored(mount).length >= 1);
+        assert.ok(triangles(mount) < 6000);
+      }
     }
     assert.ok(Math.abs(deckY(0) + TURRET_MUZZLE - GAME.slotHeights[0]!) < 1e-9);
+  });
+
+  it('spreads the slot mounts over the cave without overlapping, and keeps the low slot off the lane', () => {
+    const m = GAME.slotMounts;
+    for (let i = 0; i < m.length; i++) {
+      for (let j = i + 1; j < m.length; j++) {
+        assert.ok(Math.hypot(m[i]!.forward - m[j]!.forward, m[i]!.side - m[j]!.side) > 1.8, `slots ${i}/${j}`);
+      }
+    }
+    assert.ok(Math.abs(m[0]!.side) - 0.9 > GAME.laneHalfWidth, 'ground slot must not stand in the marching lane');
   });
 
   it('every Age 1 turret has a Weapon near the muzzle height and stays small', () => {

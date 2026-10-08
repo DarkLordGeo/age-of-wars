@@ -35,8 +35,8 @@ export interface SettlementOptions {
   fx?: boolean;
   /**
    * The imported stone cave (Rodin model). When given, it IS the base: no palisade or huts,
-   * just the cave (scaled up, mouth turned toward the lane and the camera), a campfire in
-   * front of it and the team banner.
+   * just the cave (scaled up, mouth turned toward the lane and the camera) and the team banner;
+   * the turrets are mounted on the cave.
    */
   cave?: Object3D;
 }
@@ -47,8 +47,8 @@ export const SETTLEMENT = {
   ringRadius: 12.5,
   /** Gate opening half-width (m), sized for the lane. */
   gateHalfWidth: 3.6,
-  /** Default turret mount clearance, matches GAME.turretMounts[0]. */
-  turretClear: { x: 8, z: 6, r: 2.2 },
+  /** Default turret mount clearance, matches GAME.slotMounts[0]. */
+  turretClear: { x: -2.5, z: 3.2, r: 1.6 },
 } as const;
 
 export function createSettlement(tint: number, opts: SettlementOptions = {}): Group {
@@ -57,7 +57,7 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
   const b = new PieceBuilder();
   const keepClear = opts.keepClear ?? [SETTLEMENT.turretClear];
 
-  if (opts.cave) return createCaveBase(tint, opts.cave, opts, rnd);
+  if (opts.cave) return createCaveBase(tint, opts.cave, rnd);
   buildPalisade(b, rnd, keepClear);
 
   // Great hut (the "keep": what attackers hit) and smaller huts, all behind/around the centre.
@@ -106,12 +106,11 @@ export const CAVE_BASE = {
   x: -3,
   z: -3.5,
   turnY: (3 * Math.PI) / 4,
-  fire: { x: 4.2, z: 4.6 },
   banner: { x: 1.5, z: -9.5, h: 13 },
 } as const;
 
 /** The base as a single big cave (see SettlementOptions.cave). */
-function createCaveBase(tint: number, cave: Object3D, opts: SettlementOptions, rnd: () => number): Group {
+function createCaveBase(tint: number, cave: Object3D, rnd: () => number): Group {
   const group = new Group();
   group.name = 'CaveBase';
   const C = CAVE_BASE;
@@ -125,19 +124,13 @@ function createCaveBase(tint: number, cave: Object3D, opts: SettlementOptions, r
   cave.position.set(C.x - cx, -box.min.y * k - 0.1, C.z - cz);
   group.add(cave);
 
-  const b = new PieceBuilder();
-  campfireStructure(b, rnd, C.fire.x, C.fire.z);
-  woodPile(b, rnd, C.fire.x - 3.2, C.fire.z + 1.2, 0.4);
-  group.add(b.build());
+  // Turret mounts sit on the cave itself (BaseView builds them per bought slot).
   const banner = bannerPole(tint, C.banner.x, C.banner.z, C.banner.h);
   group.add(banner.root);
-  const fire = opts.fx === false ? null : new FireFx({ x: C.fire.x, y: 0.15, z: C.fire.z }, { flames: 10, smoke: 14, scale: 1 });
-  if (fire) group.add(fire.root);
   let t = rnd() * 10;
   group.userData.tick = (dt: number): void => {
     t += dt;
     banner.wave(t);
-    fire?.update(dt);
   };
   return group;
 }

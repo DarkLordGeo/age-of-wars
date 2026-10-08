@@ -48,6 +48,12 @@ None of the assets below require attribution. Optional courtesy credit: Poly Hav
 | Brown Mud Dry (texture) | Poly Haven | Rob Tuytel | CC0 1.0 | https://polyhaven.com/a/brown_mud_dry | `public/textures/age1/ground_brown_mud_dry.jpg` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |
 | 3TD Cave Pack Pro (12 pieces: cliff, cliff edge, rock face, modular rock, rock pile, boulder, pit rock, stone, cube rock, stalagmite, stalactite, rubble) | OpenGameArt | Ron Kapaun / 3TD Studios | CC0 1.0 | https://opengameart.org/content/3td-cave-pack-pro-v10 | `public/models/env/caves/cave_rocks_kit.glb` (original zip: `assets_src/opengameart/3td_cave_pack_pro/`) | none | Collada converted with a custom reader, highest LOD only, collision meshes dropped, rescaled to metres, textures re-encoded |
 
+## Music
+
+| Track | Artist | Licence | Source | Local file | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Glorious Morning | Waterflame | Licensed to the project owner for this game (owner's licence, 2026-10-08) | https://www.youtube.com/watch?v=7T_YtklLyyo | `public/audio/music/glorious-morning.mp3` | Fetched with `yt-dlp -x --audio-format mp3` at the owner's request; Age 1 gameplay track (`src/config/music.ts`). |
+
 ## Original work
 
 - `public/models/soldier.glb`: Soldier unit, built in Blender from the project's own `male_character_base_rigged.glb` (equipment, spear, textures, the `walk`/`attack`/`death` clips and the spear-carry `idle` are original). **Provenance of the base mesh:** `male_character_base_rigged.glb` was supplied by the project owner and carries Sketchfab-style node names; its original licence is not recorded in this repository. Record it here before shipping.

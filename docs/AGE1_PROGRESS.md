@@ -38,8 +38,15 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
   - Music system (`src/audio/AudioMixer.ts`, `MusicPlayer.ts`, `src/config/music.ts`): music + sfx channels, preload, seamless loop, fade in/out, duck on pause, saved volumes. Age 1 track "Glorious Morning" by Waterflame is configured at `public/audio/music/glorious-morning.mp3` but **not included** (needs a licensed copy).
   - Research spec of the original Age 1: `docs/AGE1_SPEC.md`.
 
+- 2026-10-08 (local session) turrets on the cave, campfire removed, music:
+  - Turret slots now sit on the cave itself, as in the original (no separate log tower). `GAME.slotMounts` gives each slot its own mount on a natural ledge facing the battle camera (chosen by raycasting the cave from the gameplay camera); `World.slotPosition(team, slot)` replaces `towerPosition`. Slot heights unchanged (spec).
+  - `createCaveMount` (`src/render/age1/turrets.ts`): lashed log deck per bought slot, on a dry-stone stack for small gaps or lashed legs above the cave top; team pennant. `BaseView` raycasts the rock height under each mount.
+  - Campfire and wood pile removed from the cave base (procedural fallback camp keeps its own).
+  - HUD tooltip shows training time rounded (was `0.975609756097561s`).
+  - Age 1 music `public/audio/music/glorious-morning.mp3` added (owner-licensed, see `docs/ASSET_LICENSES.md`).
+  - Verified in Chrome (RTX 3050): all 4 player and enemy slots visible on the caves from the battle camera, units spawn and march, team tints.
+
 ## Next
-- Implement the original Age 1 roster and rules from `docs/AGE1_SPEC.md` (Clubman, Slingshot Man, Dino Rider; Rock Slingshot, Egg Automatic, Primitive Catapult; turret slots; kill-only income).
 - Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
 - Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).
 - Cave entrance assembled from cliff/rock pieces at the back slope.
@@ -55,12 +62,14 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 - Quaternius rejected (non-CC0 licence + low-poly style); Kenney rejected (stylised). Poly Haven trees rejected (too heavy / looked dead when decimated).
 
 ## Known issues
+- At the enemy end of the lane (camera focus ~+35) a dark open-shell cliff scan fills the bottom-right of the screen; cull or move it.
+- The Rodin cave's bright green tree reads stylised next to the conifers and hides the top turret slots a little.
 - Cloud sessions can't open *.vercel.app (egress proxy), so the live site has to be checked on a real browser.
 - Shadows of swaying foliage are static (depth pass is not patched); not noticeable at battle distance.
 - Headless verification runs in SwiftShader at ~1 fps, so the sim was fast-forwarded for screenshots; real-time feel still needs a check on real hardware.
 
 ## Test / build status (last run 2026-10-08)
-- `npm test`: 103/103 pass (per-asset tests for the removed GLBs are gone; 12 new Age 1 tests). `npm run typecheck`: pass. `npm run build`: pass.
+- `npm test`: 84/84 pass (2026-10-08 local session). Earlier: 103/103 pass (per-asset tests for the removed GLBs are gone; 12 new Age 1 tests). `npm run typecheck`: pass. `npm run build`: pass.
 
 ## Files changed recently
 `src/render/age1/*` (new), `src/render/environment.ts`, `src/render/terrain.ts`, `src/render/BaseView.ts`, `src/render/GameRenderer.ts`, `src/render/ProjectileRenderer.ts`, `src/assets/{manifest,scenery,placeholders,AssetLibrary}.ts`, `src/config/projectiles.ts`, `tests/age1-structures.test.ts`, `tests/scenery-assets.test.ts`, `public/textures/age1/*`, `assets_src/pipeline/make_age1_textures.py`, `docs/*`.

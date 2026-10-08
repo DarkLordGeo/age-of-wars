@@ -134,8 +134,8 @@ export class World {
       if (ts.gold < def.cost) return 'unaffordable';
       ts.gold -= def.cost;
     }
-    const tower = this.towerPosition(team);
-    base.turrets[s] = new Turret(s, def, tower.x, GAME.slotHeights[s]!, tower.z);
+    const mount = this.slotPosition(team, s);
+    base.turrets[s] = new Turret(s, def, mount.x, GAME.slotHeights[s]!, mount.z);
     this.events.push({ type: 'turretBuilt', team, slot: s, turretId });
     return 'ok';
   }
@@ -228,9 +228,10 @@ export class World {
     return unit;
   }
 
-  /** Where the turret tower stands (slots stack up it). */
-  towerPosition(team: Team): { x: number; z: number } {
-    return { x: this.bases[team].x + teamDir(team) * GAME.turretTower.forward, z: GAME.turretTower.side };
+  /** Ground position of turret slot `slot` on the team's base (see GAME.slotMounts). */
+  slotPosition(team: Team, slot: number): { x: number; z: number } {
+    const m = GAME.slotMounts[slot]!;
+    return { x: this.bases[team].x + teamDir(team) * m.forward, z: m.side };
   }
 
   // -------------------------------------------------------------- simulation

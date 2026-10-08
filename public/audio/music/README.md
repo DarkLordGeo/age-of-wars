@@ -1,6 +1,6 @@
 # Music
 
-Expected soundtrack files (not included in the repository):
+Soundtrack files (licence details in `docs/ASSET_LICENSES.md`):
 
 | Use | File | Track |
 | --- | --- | --- |

@@ -204,7 +204,7 @@ export class Hud {
 
   private unitTip(id: string): string {
     const def = this.content.units[id]!;
-    return `${def.name} - ${def.cost} gold, ${def.spawnTime}s`;
+    return `${def.name} - ${def.cost} gold, ${def.spawnTime.toFixed(1)}s`;
   }
 
   private slotTip(): string {

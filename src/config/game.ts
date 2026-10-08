@@ -17,10 +17,18 @@ export const GAME = {
   baseAimHeight: 2.5,
 
   /**
-   * Turret tower: one tower per base, `forward` metres toward the enemy and `side` metres toward
-   * the camera. Slots are stacked up it (original heights 20/68/116/164 units).
+   * Turret slots sit on the base itself, as in the original: each slot has its own mount on the
+   * cave (`forward` metres toward the enemy, `side` metres toward the camera; negative = behind the
+   * lane). The mounts sit on the cave's natural ledges facing the camera (chosen by raycasting the
+   * cave from the battle camera), so higher slots sit further back on the rock.
+   * Slot heights are the original 20/68/116/164 units.
    */
-  turretTower: { forward: 8, side: 6 },
+  slotMounts: [
+    { forward: -2.5, side: 3.2 },
+    { forward: -0.5, side: -2.0 },
+    { forward: -5.0, side: 0.0 },
+    { forward: -6.0, side: -2.2 },
+  ],
   slotHeights: [u(20), u(68), u(116), u(164)],
   /** Price of the 2nd, 3rd and 4th turret slot (the first is free). */
   slotCosts: [1000, 3000, 7500],

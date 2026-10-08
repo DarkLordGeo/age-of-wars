@@ -1,9 +1,9 @@
-import { Group, type Object3D } from 'three';
+import { Group, Raycaster, Vector3, type Object3D } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { Base } from '../sim/Base';
 import { teamDir } from '../sim/types';
 import { GAME } from '../config/game';
-import { createSlotTower, TURRET_MUZZLE } from './age1/turrets';
+import { createCaveMount, TURRET_MUZZLE } from './age1/turrets';
 
 const RECOIL_TIME = 0.18;
 /** How long the turret's nocked arrow stays hidden after a shot (visual reload). */
@@ -29,8 +29,8 @@ type Ticking = Object3D & { userData: { tick?: (dt: number) => void } };
 export class BaseView {
   readonly root = new Group();
   private readonly turretModels: Array<TurretModel | undefined> = [];
-  private tower: Object3D | null = null;
-  private towerSlots = 0;
+  /** One mount per bought slot (lashed deck on the cave rock). */
+  private readonly mounts: Object3D[] = [];
   private readonly model: Ticking;
 
   constructor(
@@ -48,6 +48,8 @@ export class BaseView {
 
   rebind(base: Base): void {
     this.base = base;
+    for (const m of this.mounts) this.root.remove(m);
+    this.mounts.length = 0;
     this.root.position.set(base.x, 0, 0);
   }
 
@@ -63,18 +65,19 @@ export class BaseView {
     this.model.userData.tick?.(dt);
     const base = this.base;
     const dir = teamDir(base.team);
-    const towerX = dir * GAME.turretTower.forward;
-    const towerZ = GAME.turretTower.side;
 
-    // Slot tower: rebuilt when a slot is bought.
-    if (this.towerSlots !== base.slots) {
-      if (this.tower) this.root.remove(this.tower);
-      this.tower = createSlotTower(this.tint, base.slots);
-      this.tower.position.set(towerX, 0, towerZ);
-      if (dir === -1) this.tower.scale.x = -1;
-      this.root.add(this.tower);
-      this.towerSlots = base.slots;
+    // Turret mounts on the cave: one per bought slot.
+    while (this.mounts.length < base.slots) {
+      const i = this.mounts.length;
+      const m = GAME.slotMounts[i]!;
+      const x = dir * m.forward;
+      const mount = createCaveMount(this.tint, i, this.rockHeight(x, m.side));
+      mount.position.set(x, 0, m.side);
+      if (dir === -1) mount.scale.x = -1;
+      this.root.add(mount);
+      this.mounts.push(mount);
     }
+    while (this.mounts.length > base.slots) this.root.remove(this.mounts.pop()!);
 
     // Turret models follow the sim's slots (null = empty).
     const turrets = base.turrets;
@@ -111,5 +114,14 @@ export class BaseView {
       t.weapon.position.x = t.weaponRestX - Math.sin((t.recoil / RECOIL_TIME) * Math.PI) * 0.3;
       t.obj.userData.tick?.(dt);
     }
+  }
+
+  /** Height of the base model's surface (rock) under local (x, z); 0 when nothing is there. */
+  private rockHeight(x: number, z: number): number {
+    this.root.updateMatrixWorld(true);
+    const origin = this.root.localToWorld(new Vector3(x, 60, z));
+    const ray = new Raycaster(origin, new Vector3(0, -1, 0));
+    const hit = ray.intersectObject(this.model, true).find((h) => !h.object.name.startsWith('TeamColor'));
+    return hit ? Math.max(0, this.root.worldToLocal(hit.point.clone()).y) : 0;
   }
 }
