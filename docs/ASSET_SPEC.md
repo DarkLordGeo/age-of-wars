@@ -56,12 +56,12 @@ Everything under `public/models/env/` (rocks, cliffs, plants, props, weapons, st
 | --- | --- |
 | Scale | Real-world metres as authored (a boulder is 1-3 m, a crate 0.5 m, a cliff section 8-20 m). Scale per instance in code. |
 | Origin | Bottom-centre: lowest point y = 0, centred on x/z (checked by `tests/scenery-assets.test.ts`). |
-| Kits | One GLB, several top-level nodes (`fort_kit`, `rock_moss_set`, `plant_*_kit`, `cave_rocks_kit`, `props_barrels_kit`); each piece is grounded at the origin and found by node name. Kits share textures. |
+| Kits | One GLB, several top-level nodes (`rock_moss_set`, `plant_*_kit`, `cave_rocks_kit`); each piece is grounded at the origin and found by node name. Kits share textures. |
 | Budget | <= 8,000 triangles per piece (each entry's `maxPieceTris` is tested), textures 256-1024 px, embedded, JPEG (PNG only where alpha is needed). |
 | Loading | `preload: true` entries are fetched at boot (the battlefield uses them); others are `lazy` - call `assets.loadModel(key, url)` first. |
 | Using them | Never `instantiate()` scenery per object. `partsOf(assets, key, piece?)` (`src/render/sceneryInstancing.ts`) returns the shared geometry/material; `addInstances` builds one `InstancedMesh` per part (scale, rotation, per-instance tint = material variation). Foliage uses alpha-test (`foliage: true`). |
 | Fallback | If a model fails to load the environment keeps its original procedural rocks/mountains; `partsOf` returns `[]`. |
-| Base keep | `base.keep` is `structures/keep_stone_01.glb`: round tower + rampart from the fort kit, scaled x0.5 (tower radius 4 m = `GAME.baseRadius`), faces +X, banner material is `TeamColor`. |
+| Base / turret | Age 1 `base.keep` and `turret.watchtower` are procedural, not GLBs (see "Age 1 procedural models" below). |
 
 Re-processing: `assets_src/download_polyhaven.py <id...>` downloads a Poly Haven glTF pack (CC0, 1k) into `assets_src/polyhaven/<id>/`;
 the Blender steps used (import, weld + decimate, ground, texture shrink, GLB export) are described in `assets_src/README.md`.
@@ -70,4 +70,21 @@ the Blender steps used (import, weld + decimate, ground, texture shrink, GLB exp
 
 Skinned Soldier/Spear Fighter built from the base male rig: 31 deform bones, one skinned mesh (4 materials: `Skin`, `Eyes`, `Gear`, `TeamColor`),
 ~9.8k triangles, 1.8 m, +X facing, origin at the feet, clips `idle` (mocap loop with the spear-carry right arm), `walk` (16 frames,
-brisk jog for 3.2 m/s), `attack` (18 frames spear thrust, 0.75 s), `death` (31 frames, supine). Not yet registered in `manifest.ts`.
+brisk jog for 3.2 m/s), `attack` (18 frames spear thrust, 0.75 s), `death` (31 frames, supine). Registered in `manifest.ts`;
+a procedural hide shield is parented to `LeftForeArm_012` at instantiate time (`AssetSpec.decorate`, `src/render/age1/gear.ts`).
+
+## Age 1 procedural models (`src/render/age1/`)
+
+Built in code so cloud sessions can iterate without Blender. Same conventions as GLBs: metres, facing +X, origin on the ground,
+team-coloured parts use a material named `TeamColor`. Built with `PieceBuilder` (one merged mesh per material).
+
+| Model | Builder | Notes |
+| --- | --- | --- |
+| `base.keep` | `createSettlement(tint, { variant })` | Palisade ring (centre x = -2, r = 12.5) with the gate on +X, great hut over the spawn point (units march out of its door), huts, hide tent, wood pile, drying rack, campfire (`FireFx`), banner + gate pennants. `userData.tick(dt)` animates fire and cloth; `BaseView` calls it. The enemy base is mirrored (`scale.x = -1`) so the low front of the palisade faces the camera for both teams. Clearances (gate, marching corridor, turret mount) are tested. |
+| `turret.watchtower` | `createWatchtower(tint)` | Log tower, deck at 4.3 m, child `Weapon` (giant bow) at 5.5 m = `muzzleHeight`; `BaseView` recoils `Weapon` along local -X and hides `NockedArrow` until reload. |
+| Trees | `buildConifer(seed)`, `buildDeadTree(seed)` | 1 m tall unit trees, instanced and scaled to 6-14 m. Frond cards use `conifer_frond_*.png`; wind sway in the vertex shader (`wind.ts`). |
+| Ground | `createTerrainMaterial()` | Splat attribute `splat` = (dirt, rock, mud), grass is the remainder; weights from `groundSplat()` in `environment.ts`. Camps and the lane corridor are flat (`terrainHeight`). |
+| Projectiles | `createArrowGeometry()` | 1 m arrow at `size` 0.12; the turret's giant arrow is the same mesh at `size` 0.2. |
+
+Textures: `python assets_src/pipeline/make_age1_textures.py` -> `public/textures/age1/` (ground maps are Poly Haven CC0; the rest is procedural).
+

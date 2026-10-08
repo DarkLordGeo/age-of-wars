@@ -38,31 +38,19 @@ None of the assets below require attribution. Optional courtesy credit: Poly Hav
 | Shrub 02 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/shrub_02 | `public/models/env/plants/plant_shrub_kit.glb` | none | 4 shrubs split into one kit |
 | Dry Branches Medium 01 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/dry_branches_medium_01 | `public/models/env/plants/plant_branches_kit.glb` | none | 3 branches split into one kit |
 | Shrub 04 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/shrub_04 | `public/models/env/plants/plant_shrub_tuft_01.glb` | none |  |
-| Wooden Crate 01 | Poly Haven | James Ray Cock | CC0 1.0 | https://polyhaven.com/a/wooden_crate_01 | `public/models/env/props/prop_crate_01.glb` | none |  |
-| Wooden Crate 02 | Poly Haven | James Ray Cock (modeling), Jurita Burger (graphic design) | CC0 1.0 | https://polyhaven.com/a/wooden_crate_02 | `public/models/env/props/prop_crate_02.glb` | none |  |
-| Wooden Bucket 01 | Poly Haven | James Ray Cock | CC0 1.0 | https://polyhaven.com/a/wooden_bucket_01 | `public/models/env/props/prop_bucket_01.glb` | none |  |
-| Wine Barrel 01 | Poly Haven | James Ray Cock | CC0 1.0 | https://polyhaven.com/a/wine_barrel_01 | `public/models/env/props/prop_barrel_01.glb` | none |  |
-| Wooden Barrels 01 | Poly Haven | James Ray Cock | CC0 1.0 | https://polyhaven.com/a/wooden_barrels_01 | `public/models/env/props/props_barrels_kit.glb` | none | barrels + stacked pieces kit |
-| Wooden Lantern 01 | Poly Haven | James Ray Cock | CC0 1.0 | https://polyhaven.com/a/wooden_lantern_01 | `public/models/env/props/prop_lantern_01.glb` | none |  |
-| Treasure Chest | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/treasure_chest | `public/models/env/props/prop_chest_01.glb` | none |  |
-| Cannon 01 | Poly Haven | Yann Kervran (Rigging), James Ray Cock (Modeling & Texturing) | CC0 1.0 | https://polyhaven.com/a/cannon_01 | `public/models/env/props/prop_cannon_01.glb` | none | rig/shape keys removed (static) |
-| Wooden Ladder | Poly Haven | Miroslav Turura | CC0 1.0 | https://polyhaven.com/a/wooden_ladder | `public/models/env/props/prop_ladder_01.glb` | none |  |
-| Picke Dirty 01 | Poly Haven | Dennis Halbeck | CC0 1.0 | https://polyhaven.com/a/picke_dirty_01 | `public/models/env/props/prop_pickaxe_01.glb` | none |  |
 | Stone Fire Pit | Poly Haven | Sebastian Platen | CC0 1.0 | https://polyhaven.com/a/stone_fire_pit | `public/models/env/props/prop_firepit_01.glb` | none |  |
-| Kite Shield | Poly Haven | Ulan Cabanilla | CC0 1.0 | https://polyhaven.com/a/kite_shield | `public/models/env/weapons/weapon_shield_kite_01.glb` | none |  |
-| Wooden Axe 02 | Poly Haven | Ulan Cabanilla | CC0 1.0 | https://polyhaven.com/a/wooden_axe_02 | `public/models/env/weapons/weapon_axe_wooden_01.glb` | none |  |
-| Hatchet | Poly Haven | James Ray Cock (Texturing), Ulan Cabanilla (modeling) | CC0 1.0 | https://polyhaven.com/a/hatchet | `public/models/env/weapons/weapon_hatchet_01.glb` | none |  |
-| Antique Estoc | Poly Haven | James Ray Cock (Texturing), Ulan Cabanilla (modeling) | CC0 1.0 | https://polyhaven.com/a/antique_estoc | `public/models/env/weapons/weapon_estoc_01.glb` | none |  |
-| Modular Fort 01 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/modular_fort_01 | `public/models/env/structures/fort_kit.glb` | none | 22 modular pieces split into one kit |
-| Modular Fort 01 | Poly Haven | Rico Cilliers | CC0 1.0 | https://polyhaven.com/a/modular_fort_01 | `public/models/env/structures/keep_stone_01.glb` | none | assembled base keep (tower + rampart + TeamColor banner) from fort pieces |
-| Large Castle Door | Poly Haven | Tina | CC0 1.0 | https://polyhaven.com/a/large_castle_door | `public/models/env/structures/struct_castle_door_01.glb` | none |  |
-| Large Iron Gate | Poly Haven | Josh Dean | CC0 1.0 | https://polyhaven.com/a/large_iron_gate | `public/models/env/structures/struct_iron_gate_01.glb` | none |  |
+| Leafy Grass (texture) | Poly Haven | Charlotte Baglioni | CC0 1.0 | https://polyhaven.com/a/leafy_grass | `public/textures/age1/ground_leafy_grass.jpg` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |
+| Dirt Floor (texture) | Poly Haven | eye-candy.xyz | CC0 1.0 | https://polyhaven.com/a/dirt_floor | `public/textures/age1/ground_dirt_floor.jpg` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |
+| Rocky Trail 02 (texture) | Poly Haven | Amal Kumar | CC0 1.0 | https://polyhaven.com/a/rocky_trail_02 | `public/textures/age1/ground_rocky_trail_02.jpg` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |
+| Brown Mud Dry (texture) | Poly Haven | Rob Tuytel | CC0 1.0 | https://polyhaven.com/a/brown_mud_dry | `public/textures/age1/ground_brown_mud_dry.jpg` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |
 | 3TD Cave Pack Pro (12 pieces: cliff, cliff edge, rock face, modular rock, rock pile, boulder, pit rock, stone, cube rock, stalagmite, stalactite, rubble) | OpenGameArt | Ron Kapaun / 3TD Studios | CC0 1.0 | https://opengameart.org/content/3td-cave-pack-pro-v10 | `public/models/env/caves/cave_rocks_kit.glb` (original zip: `assets_src/opengameart/3td_cave_pack_pro/`) | none | Collada converted with a custom reader, highest LOD only, collision meshes dropped, rescaled to metres, textures re-encoded |
 
 ## Original work
 
 - `public/models/soldier.glb`: Soldier unit, built in Blender from the project's own `male_character_base_rigged.glb` (equipment, spear, textures, the `walk`/`attack`/`death` clips and the spear-carry `idle` are original). **Provenance of the base mesh:** `male_character_base_rigged.glb` was supplied by the project owner and carries Sketchfab-style node names; its original licence is not recorded in this repository. Record it here before shipping.
 - The `Gear` and `TeamColor` textures on the Soldier are procedurally generated (no third-party images).
+- Age 1 settlement, watchtower, conifers, hide shield, bow and arrow (`src/render/age1/`, `src/render/ProjectileRenderer.ts`) are procedural Three.js geometry written for this project.
+- `public/textures/age1/` bark, log, hide, wattle, thatch, conifer fronds and grass tufts are procedurally generated (`assets_src/pipeline/make_textures.py`, `make_age1_textures.py`); only the four `ground_*` maps are third-party (listed above).
 
 ## Considered and rejected
 
@@ -70,4 +58,5 @@ None of the assets below require attribution. Optional courtesy credit: Poly Hav
 - **Kenney** (CC0): castle and nature kits are flat-shaded stylised low-poly, rejected for the realistic look.
 - Poly Haven `pine_tree_01` (958 MB), `fir_tree_01` (487 MB), `jacaranda_tree`, `island_tree_*`, `pine_sapling_medium`: far too heavy. The saplings that were processed (`fir_sapling`, `fir_sapling_medium`, `tree_small_02`) lost their foliage when decimated to RTS budgets and looked dead/skeletal, so they were dropped.
 - 3TD cave chambers and tunnels (`Cave_01/02`, `L_Curve`, `T_Junction`, `Y_Tube`) and `CaveRock13`: smooth low-res blobs / stretched UVs when seen from outside (they are meant to be viewed from inside).
+- Removed in the Age 1 overhaul (2026-10-08) as medieval/off-theme: Poly Haven crates, bucket, barrels, lantern, chest, cannon, ladder, pickaxe, kite shield, axes, estoc, modular fort (and the stone keep built from it), castle door, iron gate.
 - Dinosaurs and other creatures: the only CC0 options found were stylised low-poly or FBX-only; nothing realistic enough.

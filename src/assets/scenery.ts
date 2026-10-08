@@ -68,9 +68,10 @@ export const SCENERY: readonly SceneryAsset[] = [
   { key: 'env.tree.log_fallen_02', url: `${E}trees/log_fallen_02.glb`, kind: 'single', maxPieceTris: 900, preload: true },
   { key: 'env.tree.stump_01', url: `${E}trees/tree_stump_01.glb`, kind: 'single', maxPieceTris: 1500, preload: true },
 
-  // Vegetation (alpha-cut cards; kits of individual plants)
-  { key: 'env.kit.fern', url: `${E}plants/plant_fern_kit.glb`, kind: 'kit', pieces: seq('fern', 4), maxPieceTris: 700, preload: true },
-  { key: 'env.kit.grass', url: `${E}plants/plant_grass_kit.glb`, kind: 'kit', pieces: seq('grass', 11), maxPieceTris: 340, preload: true },
+  // Vegetation (alpha-cut cards; kits of individual plants). Grass/fern kits are not preloaded:
+  // they read as dark specks at battle distance, so Age 1 uses its own grass tufts (src/render/age1/grass.ts).
+  { key: 'env.kit.fern', url: `${E}plants/plant_fern_kit.glb`, kind: 'kit', pieces: seq('fern', 4), maxPieceTris: 700 },
+  { key: 'env.kit.grass', url: `${E}plants/plant_grass_kit.glb`, kind: 'kit', pieces: seq('grass', 11), maxPieceTris: 340 },
   { key: 'env.kit.bush_dry', url: `${E}plants/plant_bush_dry_kit.glb`, kind: 'kit', pieces: seq('bush', 5), maxPieceTris: 900, preload: true },
   { key: 'env.kit.shrub', url: `${E}plants/plant_shrub_kit.glb`, kind: 'kit', pieces: seq('shrub', 4), maxPieceTris: 1500, preload: true },
   { key: 'env.kit.branches', url: `${E}plants/plant_branches_kit.glb`, kind: 'kit', pieces: seq('branch', 3), maxPieceTris: 700 },

@@ -21,6 +21,7 @@ wheel zooms · `F` toggles front-line follow · `O` overview (both bases) · `?d
 | `src/game` | `Game` composition root + fixed-step loop, `EventBus` | everything |
 | `src/assets` | `AssetLibrary` (key → model, GLB with placeholder fallback), manifest, placeholders | three |
 | `src/render` | Mirrors the `World` into Three.js (pooled views, instanced projectiles); never mutates it | `sim`, `assets` |
+| `src/render/age1` | Procedural Age 1 art: camp, watchtower, conifers, splat terrain, grass, fire, dust, unit gear | three |
 | `src/audio` | Sound-cue hooks (placeholder bank) | `game` |
 | `src/ui` | DOM HUD generated from content; acts through handlers | `sim` (read-only) |
 

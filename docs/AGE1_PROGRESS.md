@@ -3,54 +3,52 @@
 Single source of truth for Age 1 work. Read this first in every session, then `git log --oneline -15` and `git status`.
 
 ## Overall status
-- **Phase:** Age 1 visual overhaul in progress. Game is playable and deployed.
+- **Phase:** Age 1 visual overhaul done (all 8 steps). Next: polish items below.
 - **Vercel production:** https://age-of-wars.vercel.app (project `age-of-wars`, team `lashas-projects-63f3e6ef`, id `prj_4k5CossloKutrHc040Xutq1Rb9AL`)
-- **Latest deployment:** `dpl_7eRUC2yQeKpRrJYDX6Gda2qNT78G` (2026-10-08, from the local CLI, status Ready). Verified in Chrome (RTX 3050): game boots, Soldier GLB and keep load.
+- **Latest deployment:** `dpl_7eRUC2yQeKpRrJYDX6Gda2qNT78G` (2026-10-08, local CLI). It predates the overhaul; see "Deploy" below.
 - **GitHub:** https://github.com/DarkLordGeo/age-of-wars (private, branch `main`)
 - **Deploy route:** local `vercel deploy --prod` works. Git-push auto-deploy needs the Vercel GitHub app to be given access to `age-of-wars` (see AGE1_LOCAL_TASKS.md). Once granted: `create_git_project` (Vercel MCP) links the repo and every push to `main` deploys.
-- **Email updates:** a Gmail connector exists but no update emails have been sent. Progress is recorded here instead.
 
 ## Completed
-- Soldier GLB (`public/models/soldier.glb`): 1.795 m, 9,773 tris, 31 bones, idle/walk/attack/death, no root motion, passes `validateModel`.
-- Soldier registered in `src/assets/manifest.ts` (`url: '/models/soldier.glb'`). Seen in the running game: spawns, walks, faces correctly, team colours via `TeamColor`.
-- Free CC0 scenery library in `public/models/env/` with catalogue `src/assets/scenery.ts`; instancing helper `src/render/sceneryInstancing.ts`; `AssetLibrary` gained `lazy` + `prototype()`.
-- Environment (`src/render/environment.ts`): real rocks, cliff-ridge backdrop, ground cover, deadwood, camps (camps are now marked for removal).
-- Tests: `tests/scenery-assets.test.ts` (budgets, grounding, embedded textures, Soldier contract).
-- Procedural Age 1 textures: `assets_src/pipeline/make_textures.py` -> `assets_src/generated/` (conifer fronds, green/dry grass tufts, thatch, plus copies of the Soldier gear atlas and TeamColor cloth).
-
-## Current task
-Age 1 overhaul, done **procedurally in Three.js** (no Blender dependency):
-1. Remove medieval/irrelevant assets: barrels, crates, chest, cannon, lantern, ladder, pickaxe, kite shield, axes, estoc, castle door, iron gate, fort kit, stone keep. Drop camps.
-2. Primitive bases (player + enemy variant): palisade ring with an open gate facing the lane, huts with thatch roofs, hide tent, wood pile, campfire, a TeamColor banner pole. Replace `base.keep`.
-3. Primitive turret: log watchtower with a mounted giant bow (`Weapon` child recoils on fire). Replace `turret.watchtower`.
-4. Trees: procedural conifers (bark trunk + alpha needle-frond cards from `conifer_frond_*.png`) + a dead tree, instanced; remove the cone trees.
-5. Terrain: splat-blended dirt/grass/rock ground (Poly Haven `sparse_grass`, `dirt_floor`, `rocky_trail_02`), lane as a worn dirt path instead of flat planes.
-6. Grass tufts (`grass_tuft_green/dry.png`) framing the lane edges; wind sway in the vertex shader.
-7. Atmosphere: campfire flames + smoke sprites, faint dust.
-8. Age 1 weapons: spear (exists on the Soldier), hide shield, bow, arrows; arrow mesh for projectiles.
+- Soldier GLB (`public/models/soldier.glb`), registered, spawns/walks/attacks/dies; TeamColor tint. Now carries a procedural hide shield on the left forearm (`AssetSpec.decorate` -> `src/render/age1/gear.ts`).
+- 2026-10-08 Age 1 overhaul (commit `age1: procedural Stone Age camp...`), all procedural in Three.js (`src/render/age1/`):
+  1. Medieval assets removed (props, weapons, fort kit, stone keep, castle door, iron gate, camps, old Blender `age1/*_kit.glb`). Only the stone fire pit model is kept in the catalogue.
+  2. `base.keep` = palisaded camp: gate toward the lane, great hut over the spawn point, 3 huts with thatch, hide tent, wood pile, drying rack, campfire, TeamColor banner pole + gate pennants (waving). Enemy camp mirrored + layout variant.
+  3. `turret.watchtower` = lashed log tower with a giant bow on a swivel (`Weapon` recoils, `NockedArrow` hides until reload), thatch roof, team pennant.
+  4. Procedural conifers (4 variants, frond cards) + dead snags in groves behind the lane and flanking the camps; cone trees gone.
+  5. Splat terrain (Poly Haven leafy_grass / dirt_floor / brown_mud_dry / rocky_trail_02, colour-calibrated in the shader), meandering worn footpath, trampled camp yards, rock on steep/high ground. Lane planes and grey base pads gone.
+  6. Grass tufts (new distance-friendly textures) framing the path and over the meadow; wind sway in the vertex shader; back faces keep up-normals.
+  7. Campfire flames + smoke + flickering light (`fire.ts`), drifting dust motes over the lane (`dust.ts`).
+  8. Arrow projectile mesh (1 m arrow; turret shoots a giant one), hide shield on the Soldier, curved bow + quiver on the archer placeholder, spear on the fallback soldier placeholder.
+- Texture pipeline: `python assets_src/pipeline/make_age1_textures.py` -> `public/textures/age1/` (772 KB).
+- Tests: `tests/age1-structures.test.ts` (gate/corridor/turret clearances, TeamColor, budgets, flat camps, path splat, trees, arrow).
 
 ## Next
+- Deploy the overhaul (needs the Vercel GitHub app access or a local `vercel deploy --prod`).
+- Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
+- Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).
 - Cave entrance assembled from cliff/rock pieces at the back slope.
-- Unit readability: team-coloured ground ring.
-- Re-verify in the deployed game (spawn, walk, attack, death, turret fire, zoom/pan).
+- Performance check on the RTX 3050: ~1.05M triangles/frame incl. the shadow pass (conifer fronds ~140k, terrain ~97k, cliffs/rocks the rest). If needed: fewer frond cards on far groves, drop shadows on the far cliff ridge.
 
 ## Decisions
 - Age 1 only. No Age 2+ work.
 - Procedural Three.js geometry over Blender for settlement/turret/trees so cloud sessions can iterate.
-- Quaternius rejected (non-CC0 licence + low-poly style); Kenney rejected (stylised).
-- Poly Haven trees rejected (0.4-2M tris; decimated versions looked dead).
+- Enemy base is mirrored (not rotated) so both palisades show their low front to the camera.
+- Units spawn inside the great hut and march out of its door through the gate (eave raised to 2.45 m so heads clear it).
+- Poly Haven grass/fern kits stay in the catalogue but are no longer preloaded (they read as dark specks); Age 1 uses its own tufts.
+- Kept the wooden-handled stone fire pit model (fits a primitive camp); dropped the wooden bucket with the other medieval props.
+- Quaternius rejected (non-CC0 licence + low-poly style); Kenney rejected (stylised). Poly Haven trees rejected (too heavy / looked dead when decimated).
 
 ## Known issues
 - Deploy from a cloud session needs either the Vercel GitHub app access (preferred) or a `VERCEL_TOKEN` secret.
-- Grass/ferns from Poly Haven read as dark specks at gameplay distance.
-- Cone trees still present (being replaced).
-- `public/models/age1/trees_kit.glb` / `grass_kit.glb` are an early Blender test export (sparse); superseded by the procedural trees.
+- Shadows of swaying foliage are static (depth pass is not patched); not noticeable at battle distance.
+- Headless verification runs in SwiftShader at ~1 fps, so the sim was fast-forwarded for screenshots; real-time feel still needs a check on real hardware.
 
 ## Test / build status (last run 2026-10-08)
-- `npm test`: 109/109 pass. `npm run typecheck`: pass. `npm run build`: pass.
+- `npm test`: 103/103 pass (per-asset tests for the removed GLBs are gone; 12 new Age 1 tests). `npm run typecheck`: pass. `npm run build`: pass.
 
 ## Files changed recently
-`src/assets/manifest.ts`, `src/assets/AssetLibrary.ts`, `src/assets/scenery.ts`, `src/render/environment.ts`, `src/render/sceneryInstancing.ts`, `src/render/GameRenderer.ts`, `tests/scenery-assets.test.ts`, `docs/*`, `.vercelignore`, `.gitignore`.
+`src/render/age1/*` (new), `src/render/environment.ts`, `src/render/terrain.ts`, `src/render/BaseView.ts`, `src/render/GameRenderer.ts`, `src/render/ProjectileRenderer.ts`, `src/assets/{manifest,scenery,placeholders,AssetLibrary}.ts`, `src/config/projectiles.ts`, `tests/age1-structures.test.ts`, `tests/scenery-assets.test.ts`, `public/textures/age1/*`, `assets_src/pipeline/make_age1_textures.py`, `docs/*`.
 
 ## Blender / local-only tasks
 See `docs/AGE1_LOCAL_TASKS.md`.

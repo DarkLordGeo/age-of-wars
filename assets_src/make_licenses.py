@@ -29,25 +29,16 @@ PH = [
     ('plants/plant_shrub_kit.glb', 'shrub_02', '4 shrubs split into one kit'),
     ('plants/plant_branches_kit.glb', 'dry_branches_medium_01', '3 branches split into one kit'),
     ('plants/plant_shrub_tuft_01.glb', 'shrub_04', ''),
-    ('props/prop_crate_01.glb', 'wooden_crate_01', ''),
-    ('props/prop_crate_02.glb', 'wooden_crate_02', ''),
-    ('props/prop_bucket_01.glb', 'wooden_bucket_01', ''),
-    ('props/prop_barrel_01.glb', 'wine_barrel_01', ''),
-    ('props/props_barrels_kit.glb', 'wooden_barrels_01', 'barrels + stacked pieces kit'),
-    ('props/prop_lantern_01.glb', 'wooden_lantern_01', ''),
-    ('props/prop_chest_01.glb', 'treasure_chest', ''),
-    ('props/prop_cannon_01.glb', 'cannon_01', 'rig/shape keys removed (static)'),
-    ('props/prop_ladder_01.glb', 'wooden_ladder', ''),
-    ('props/prop_pickaxe_01.glb', 'picke_dirty_01', ''),
     ('props/prop_firepit_01.glb', 'stone_fire_pit', ''),
-    ('weapons/weapon_shield_kite_01.glb', 'kite_shield', ''),
-    ('weapons/weapon_axe_wooden_01.glb', 'wooden_axe_02', ''),
-    ('weapons/weapon_hatchet_01.glb', 'hatchet', ''),
-    ('weapons/weapon_estoc_01.glb', 'antique_estoc', ''),
-    ('structures/fort_kit.glb', 'modular_fort_01', '22 modular pieces split into one kit'),
-    ('structures/keep_stone_01.glb', 'modular_fort_01', 'assembled base keep (tower + rampart + TeamColor banner) from fort pieces'),
-    ('structures/struct_castle_door_01.glb', 'large_castle_door', ''),
-    ('structures/struct_iron_gate_01.glb', 'large_iron_gate', ''),
+]
+
+
+# Ground textures (Poly Haven, CC0): (public file, polyhaven id) - info.json in assets_src/polyhaven_textures
+TEX = [
+    ('textures/age1/ground_leafy_grass.jpg', 'leafy_grass'),
+    ('textures/age1/ground_dirt_floor.jpg', 'dirt_floor'),
+    ('textures/age1/ground_rocky_trail_02.jpg', 'rocky_trail_02'),
+    ('textures/age1/ground_brown_mud_dry.jpg', 'brown_mud_dry'),
 ]
 
 
@@ -61,6 +52,12 @@ for f, i, note in PH:
     d = info(i)
     authors = ', '.join(a if r == 'All' else f'{a} ({r})' for a, r in d['authors'].items())
     rows.append(f"| {d['name']} | Poly Haven | {authors} | CC0 1.0 | https://polyhaven.com/a/{i} | `public/models/env/{f}` | none | {note} |")
+
+for f, i in TEX:
+    with open(os.path.join(ROOT, 'polyhaven_textures', i, 'info.json'), encoding='utf-8') as fh:
+        d = json.load(fh)
+    authors = ', '.join(a if r == 'All' else f'{a} ({r})' for a, r in d['authors'].items())
+    rows.append(f"| {d['name']} (texture) | Poly Haven | {authors} | CC0 1.0 | https://polyhaven.com/a/{i} | `public/{f}` | none | diffuse only, 1k -> 512 px (assets_src/pipeline/make_age1_textures.py) |")
 
 out = [
     '# Asset licenses',
@@ -95,6 +92,8 @@ out += [
     '',
     "- `public/models/soldier.glb`: Soldier unit, built in Blender from the project's own `male_character_base_rigged.glb` (equipment, spear, textures, the `walk`/`attack`/`death` clips and the spear-carry `idle` are original). **Provenance of the base mesh:** `male_character_base_rigged.glb` was supplied by the project owner and carries Sketchfab-style node names; its original licence is not recorded in this repository. Record it here before shipping.",
     '- The `Gear` and `TeamColor` textures on the Soldier are procedurally generated (no third-party images).',
+    '- Age 1 settlement, watchtower, conifers, hide shield, bow and arrow (`src/render/age1/`, `src/render/ProjectileRenderer.ts`) are procedural Three.js geometry written for this project.',
+    '- `public/textures/age1/` bark, log, hide, wattle, thatch, conifer fronds and grass tufts are procedurally generated (`assets_src/pipeline/make_textures.py`, `make_age1_textures.py`); only the four `ground_*` maps are third-party (listed above).',
     '',
     '## Considered and rejected',
     '',
@@ -102,6 +101,7 @@ out += [
     '- **Kenney** (CC0): castle and nature kits are flat-shaded stylised low-poly, rejected for the realistic look.',
     '- Poly Haven `pine_tree_01` (958 MB), `fir_tree_01` (487 MB), `jacaranda_tree`, `island_tree_*`, `pine_sapling_medium`: far too heavy. The saplings that were processed (`fir_sapling`, `fir_sapling_medium`, `tree_small_02`) lost their foliage when decimated to RTS budgets and looked dead/skeletal, so they were dropped.',
     '- 3TD cave chambers and tunnels (`Cave_01/02`, `L_Curve`, `T_Junction`, `Y_Tube`) and `CaveRock13`: smooth low-res blobs / stretched UVs when seen from outside (they are meant to be viewed from inside).',
+    '- Removed in the Age 1 overhaul (2026-10-08) as medieval/off-theme: Poly Haven crates, bucket, barrels, lantern, chest, cannon, ladder, pickaxe, kite shield, axes, estoc, modular fort (and the stone keep built from it), castle door, iron gate.',
     '- Dinosaurs and other creatures: the only CC0 options found were stylised low-poly or FBX-only; nothing realistic enough.',
 ]
 with open(os.path.join(ROOT, '..', 'docs', 'ASSET_LICENSES.md'), 'w', encoding='utf-8') as fh:
