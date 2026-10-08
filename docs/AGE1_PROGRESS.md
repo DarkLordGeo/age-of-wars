@@ -23,6 +23,13 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 - Texture pipeline: `python assets_src/pipeline/make_age1_textures.py` -> `public/textures/age1/` (772 KB).
 - Tests: `tests/age1-structures.test.ts` (gate/corridor/turret clearances, TeamColor, budgets, flat camps, path splat, trees, arrow).
 
+- 2026-10-08 realism + HUD pass:
+  - Base no longer shakes on hits; hit/miss/death bubbles removed (FxLayer deleted) until real effects exist.
+  - Physical sky + clouds, PMREM image-based lighting (environmentIntensity 0.14; the Preetham sky is HDR-bright), horizon fog, softer shadows.
+  - `src/render/post.ts`: MSAA, half-res GTAO, HDR bloom, grade + vignette. `?quality=low|medium|high`; auto steps down below ~42 fps. Foliage/particles/sky/health bars on `NO_AO_LAYER` (the shadow camera enables it).
+  - Terrain normal maps (world-space, blended by splat weights) and drifting cloud shadows on terrain + grass (`clouds.ts`).
+  - HUD restyled (wood/hide/rope, original design): framed unit cards with portraits rendered at boot from the unit models (`src/ui/portraits.ts`), coin costs, hotkeys, lock overlay with XP, portrait queue tokens with radial progress, coin-priced upgrade list. Fonts: IM Fell English SC + Alegreya Sans (Google Fonts).
+
 ## Next
 - Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
 - Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).

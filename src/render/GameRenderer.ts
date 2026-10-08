@@ -12,7 +12,7 @@ import { PostFx } from './post';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { UnitView } from './UnitView';
 
-const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
+export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
 
 /**
  * Presentation layer. Reads the World every frame and mirrors it into a Three.js scene;

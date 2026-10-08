@@ -2,9 +2,10 @@ import type { AssetLibrary } from '../assets/AssetLibrary';
 import { bindAudio, PlaceholderSoundBank } from '../audio/AudioHooks';
 import { GAME } from '../config/game';
 import type { EnqueueResult } from '../sim/types';
-import { GameRenderer } from '../render/GameRenderer';
+import { GameRenderer, TEAM_TINT } from '../render/GameRenderer';
 import { World } from '../sim/World';
 import { Hud } from '../ui/Hud';
+import { renderPortraits } from '../ui/portraits';
 import { EventBus } from './EventBus';
 
 const ENQUEUE_MESSAGES: Partial<Record<EnqueueResult, string>> = {
@@ -48,6 +49,8 @@ export class Game {
       onToggleFollow: () => this.renderer.rig.toggleFollow(),
       onOverview: () => this.renderer.rig.toggleOverview(),
     });
+    // Card portraits come from the same models the battlefield uses (player colours).
+    this.hud.setPortraits(renderPortraits(assets, Object.values(this.world.content.units), TEAM_TINT.player));
   }
 
   start(): void {
