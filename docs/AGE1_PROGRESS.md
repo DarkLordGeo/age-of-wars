@@ -5,9 +5,9 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 ## Overall status
 - **Phase:** Age 1 visual overhaul done (all 8 steps). Next: polish items below.
 - **Vercel production:** https://age-of-wars.vercel.app (project `age-of-wars`, team `lashas-projects-63f3e6ef`, id `prj_4k5CossloKutrHc040Xutq1Rb9AL`)
-- **Latest deployment:** `dpl_7eRUC2yQeKpRrJYDX6Gda2qNT78G` (2026-10-08, local CLI). It predates the overhaul; see "Deploy" below.
+- **Latest deployment:** `dpl_5rgvpRjHctKj5Je5Zb6pLZQ2RKeZ` (2026-10-08, from GitHub `main` @ d74b47e, Ready). Includes the Age 1 overhaul.
 - **GitHub:** https://github.com/DarkLordGeo/age-of-wars (private, branch `main`)
-- **Deploy route:** local `vercel deploy --prod` works. Git-push auto-deploy needs the Vercel GitHub app to be given access to `age-of-wars` (see AGE1_LOCAL_TASKS.md). Once granted: `create_git_project` (Vercel MCP) links the repo and every push to `main` deploys.
+- **Deploy route:** the Vercel project is connected to GitHub (2026-10-08). Pushes to `main` deploy to production; the Vercel MCP `create_deployment` with a `gitSource` also works from cloud sessions.
 
 ## Completed
 - Soldier GLB (`public/models/soldier.glb`), registered, spawns/walks/attacks/dies; TeamColor tint. Now carries a procedural hide shield on the left forearm (`AssetSpec.decorate` -> `src/render/age1/gear.ts`).
@@ -24,7 +24,6 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 - Tests: `tests/age1-structures.test.ts` (gate/corridor/turret clearances, TeamColor, budgets, flat camps, path splat, trees, arrow).
 
 ## Next
-- Deploy the overhaul (needs the Vercel GitHub app access or a local `vercel deploy --prod`).
 - Unit readability: team-coloured ground ring under units (enemy/player read mainly by shield band / torso colour today).
 - Archer and Brute are still box placeholders: give them GLBs (or reuse the Soldier rig with a bow / club via `decorate`).
 - Cave entrance assembled from cliff/rock pieces at the back slope.
@@ -40,7 +39,7 @@ Single source of truth for Age 1 work. Read this first in every session, then `g
 - Quaternius rejected (non-CC0 licence + low-poly style); Kenney rejected (stylised). Poly Haven trees rejected (too heavy / looked dead when decimated).
 
 ## Known issues
-- Deploy from a cloud session needs either the Vercel GitHub app access (preferred) or a `VERCEL_TOKEN` secret.
+- Cloud sessions can't open *.vercel.app (egress proxy), so the live site has to be checked on a real browser.
 - Shadows of swaying foliage are static (depth pass is not patched); not noticeable at battle distance.
 - Headless verification runs in SwiftShader at ~1 fps, so the sim was fast-forwarded for screenshots; real-time feel still needs a check on real hardware.
 

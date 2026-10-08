@@ -3,7 +3,7 @@
 Nothing here blocks development; work continues procedurally in Three.js.
 
 ## Needs a one-time authorization
-- [ ] **Vercel GitHub app access to `DarkLordGeo/age-of-wars`** (GitHub -> Settings -> Applications -> Vercel -> Configure -> Repository access -> add `age-of-wars`). After that, the agent links the repo with the Vercel MCP `create_git_project` and every push to `main` deploys to https://age-of-wars.vercel.app. Until then only the local CLI (`vercel deploy --prod`) can deploy.
+- [x] **Vercel GitHub app access to `DarkLordGeo/age-of-wars`** (GitHub -> Settings -> Applications -> Vercel -> Configure -> Repository access -> add `age-of-wars`). After that, the agent links the repo with the Vercel MCP `create_git_project` and every push to `main` deploys to https://age-of-wars.vercel.app. Done 2026-10-08: the project is connected and deploys from `main`.
 
 ## Needs local Blender (optional polish, not required for Age 1)
 - [ ] Soldier: clean up the jagged edges of the jerkin/sash shells (`assets_src/soldier/soldier_production.blend`).
