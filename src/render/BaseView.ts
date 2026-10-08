@@ -5,11 +5,30 @@ import { teamDir } from '../sim/types';
 
 const SHAKE_TIME = 0.25;
 const RECOIL_TIME = 0.18;
+/** How long the turret's nocked arrow stays hidden after a shot (visual reload). */
+const RELOAD_SHOW_AFTER = 0.75;
 
-/** Base building plus its turret models. Shakes when hit, recoils turrets when they fire. */
+interface TurretModel {
+  key: string;
+  obj: Object3D;
+  /** The recoiling part ("Weapon" child); the whole model when the model has none. */
+  weapon: Object3D;
+  weaponRestX: number;
+  nocked: Object3D | null;
+  recoil: number;
+  reload: number;
+}
+
+type Ticking = Object3D & { userData: { tick?: (dt: number) => void } };
+
+/**
+ * Base building plus its turret models. Shakes when hit, recoils turrets when they fire, and
+ * ticks animated parts (campfire, banners) that models expose as `userData.tick(dt)`.
+ */
 export class BaseView {
   readonly root = new Group();
-  private readonly turretModels: Array<{ key: string; obj: Object3D; recoil: number }> = [];
+  private readonly turretModels: TurretModel[] = [];
+  private readonly model: Ticking;
   private shake = 0;
 
   constructor(
@@ -17,10 +36,11 @@ export class BaseView {
     private readonly tint: number,
     private base: Base,
   ) {
-    const model = assets.instantiate('base.keep', tint);
-    // Models face +X; the enemy base faces the other way.
-    model.rotation.y = teamDir(base.team) === 1 ? 0 : Math.PI;
-    this.root.add(model);
+    this.model = assets.instantiate('base.keep', tint) as Ticking;
+    // Models face +X. The enemy base is mirrored (not rotated) so the low, open side of the
+    // camp keeps facing the camera (+Z) for both teams. Three.js flips winding for det < 0.
+    if (teamDir(base.team) === -1) this.model.scale.x = -1;
+    this.root.add(this.model);
     this.root.position.set(base.x, 0, 0);
   }
 
@@ -36,10 +56,15 @@ export class BaseView {
 
   triggerRecoil(turretIndex: number): void {
     const t = this.turretModels[turretIndex];
-    if (t) t.recoil = RECOIL_TIME;
+    if (!t) return;
+    t.recoil = RECOIL_TIME;
+    t.reload = RELOAD_SHOW_AFTER;
+    if (t.nocked) t.nocked.visible = false;
   }
 
   update(dt: number): void {
+    this.model.userData.tick?.(dt);
+
     // (Re)build turret models when the sim's turret set changes, e.g. on age advance.
     const turrets = this.base.turrets;
     for (let i = 0; i < turrets.length; i++) {
@@ -51,15 +76,34 @@ export class BaseView {
       obj.position.set(t.x - this.base.x, 0, t.z);
       obj.rotation.y = teamDir(this.base.team) === 1 ? 0 : Math.PI;
       this.root.add(obj);
-      this.turretModels[i] = { key: t.def.modelKey, obj, recoil: 0 };
+      const weapon = obj.getObjectByName('Weapon') ?? obj;
+      this.turretModels[i] = {
+        key: t.def.modelKey,
+        obj,
+        weapon,
+        weaponRestX: weapon.position.x,
+        nocked: weapon === obj ? null : (weapon.getObjectByName('NockedArrow') ?? null),
+        recoil: 0,
+        reload: 0,
+      };
     }
 
-    const dir = teamDir(this.base.team);
     for (let i = 0; i < this.turretModels.length; i++) {
       const t = this.turretModels[i]!;
       t.recoil = Math.max(0, t.recoil - dt);
+      if (t.reload > 0) {
+        t.reload = Math.max(0, t.reload - dt);
+        if (t.reload === 0 && t.nocked) t.nocked.visible = true;
+      }
       const kick = Math.sin((t.recoil / RECOIL_TIME) * Math.PI) * 0.3;
-      t.obj.position.x = turrets[i]!.x - this.base.x - dir * kick;
+      if (t.weapon === t.obj) {
+        // Whole-model kick, in base space (toward our own side).
+        t.obj.position.x = turrets[i]!.x - this.base.x - teamDir(this.base.team) * kick;
+      } else {
+        // Weapon kick in the turret's local space (the model is already turned to face the enemy).
+        t.weapon.position.x = t.weaponRestX - kick;
+      }
+      t.obj.userData.tick?.(dt);
     }
 
     this.shake = Math.max(0, this.shake - dt);

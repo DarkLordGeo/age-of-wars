@@ -7,7 +7,7 @@ import type { World } from '../sim/World';
 import { TEAMS, type Team } from '../sim/types';
 import { BaseView } from './BaseView';
 import { CameraRig } from './CameraRig';
-import { buildEnvironment } from './environment';
+import { buildEnvironment, type Environment } from './environment';
 import { FxLayer } from './FxLayer';
 import { ProjectileRenderer } from './ProjectileRenderer';
 import { UnitView } from './UnitView';
@@ -30,6 +30,7 @@ export class GameRenderer {
   private readonly baseViews = {} as Record<Team, BaseView>;
   private readonly projectileRenderer: ProjectileRenderer;
   private readonly fx: FxLayer;
+  private readonly env: Environment;
   private world: World | null = null;
   private frame = 0;
 
@@ -46,7 +47,7 @@ export class GameRenderer {
     this.renderer.shadowMap.type = PCFSoftShadowMap;
     host.appendChild(this.renderer.domElement);
 
-    buildEnvironment(this.scene, this.assets);
+    this.env = buildEnvironment(this.scene, this.assets);
     this.projectileRenderer = new ProjectileRenderer(this.scene);
     this.fx = new FxLayer(this.scene, bus);
     this.rig = new CameraRig(this.renderer.domElement, GAME.baseOffset);
@@ -91,6 +92,7 @@ export class GameRenderer {
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
     this.fx.update(dt);
+    this.env.update(dt);
     this.renderer.render(this.scene, this.rig.camera);
   }
 

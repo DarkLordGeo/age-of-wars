@@ -76,59 +76,6 @@ export const SCENERY: readonly SceneryAsset[] = [
   { key: 'env.kit.branches', url: `${E}plants/plant_branches_kit.glb`, kind: 'kit', pieces: seq('branch', 3), maxPieceTris: 700 },
   { key: 'env.plant.shrub_tuft_01', url: `${E}plants/plant_shrub_tuft_01.glb`, kind: 'single', maxPieceTris: 2500 },
 
-  // Props
-  { key: 'env.prop.crate_01', url: `${E}props/prop_crate_01.glb`, kind: 'single', maxPieceTris: 800, preload: true },
-  { key: 'env.prop.crate_02', url: `${E}props/prop_crate_02.glb`, kind: 'single', maxPieceTris: 800, preload: true },
-  { key: 'env.prop.bucket_01', url: `${E}props/prop_bucket_01.glb`, kind: 'single', maxPieceTris: 900, preload: true },
-  { key: 'env.prop.barrel_01', url: `${E}props/prop_barrel_01.glb`, kind: 'single', maxPieceTris: 1100, preload: true },
-  { key: 'env.kit.barrels', url: `${E}props/props_barrels_kit.glb`, kind: 'kit', pieces: seq('barrel', 5), maxPieceTris: 1000 },
-  { key: 'env.prop.lantern_01', url: `${E}props/prop_lantern_01.glb`, kind: 'single', maxPieceTris: 1000 },
-  { key: 'env.prop.chest_01', url: `${E}props/prop_chest_01.glb`, kind: 'single', maxPieceTris: 2200 },
-  { key: 'env.prop.cannon_01', url: `${E}props/prop_cannon_01.glb`, kind: 'single', maxPieceTris: 4500 },
-  { key: 'env.prop.ladder_01', url: `${E}props/prop_ladder_01.glb`, kind: 'single', maxPieceTris: 900 },
-  { key: 'env.prop.pickaxe_01', url: `${E}props/prop_pickaxe_01.glb`, kind: 'single', maxPieceTris: 700 },
+  // Props (Age 1 keeps only the stone fire pit; the medieval props were removed)
   { key: 'env.prop.firepit_01', url: `${E}props/prop_firepit_01.glb`, kind: 'single', maxPieceTris: 1600, preload: true },
-
-  // Weapons (static models, real size, origin at the lowest point: for racks, loot, decor and future unit gear)
-  { key: 'env.weapon.shield_kite_01', url: `${E}weapons/weapon_shield_kite_01.glb`, kind: 'single', maxPieceTris: 1600 },
-  { key: 'env.weapon.axe_wooden_01', url: `${E}weapons/weapon_axe_wooden_01.glb`, kind: 'single', maxPieceTris: 700 },
-  { key: 'env.weapon.hatchet_01', url: `${E}weapons/weapon_hatchet_01.glb`, kind: 'single', maxPieceTris: 600 },
-  { key: 'env.weapon.estoc_01', url: `${E}weapons/weapon_estoc_01.glb`, kind: 'single', maxPieceTris: 1000 },
-
-  // Fortifications. Fort pieces are 8.6 m walls / 15.8 m towers: scale x0.5 for unit-sized defences.
-  {
-    key: 'env.kit.fort',
-    url: `${E}structures/fort_kit.glb`,
-    kind: 'kit',
-    pieces: [
-      'tower_round',
-      'wall_stairs_straight_01',
-      'wall_thick_corner_01',
-      'wall_thick_corner_02',
-      'wall_thick_end_01',
-      'wall_thick_end_02',
-      'wall_thick_straight_01',
-      'wall_thick_straight_02',
-      'wall_thick_thin_transition_01',
-      'wall_thin_corner_01',
-      'wall_thin_corner_02',
-      'wall_thin_corner_03',
-      'wall_thin_gate_01',
-      'wall_thin_straight_01',
-      'wall_thin_straight_02',
-      'wall_thin_straight_03',
-      'wall_thin_straight_04',
-      'wall_walkway_corner_01',
-      'wall_walkway_corner_02',
-      'wall_walkway_end_01',
-      'wall_walkway_straight_01',
-      'wall_walkway_straight_02',
-    ],
-    maxPieceTris: 6000,
-  },
-  { key: 'env.struct.castle_door_01', url: `${E}structures/struct_castle_door_01.glb`, kind: 'single', maxPieceTris: 3200 },
-  { key: 'env.struct.iron_gate_01', url: `${E}structures/struct_iron_gate_01.glb`, kind: 'single', maxPieceTris: 4200 },
 ];
-
-/** Model key of the assembled stone keep (tower + rampart + TeamColor banner) used for both bases. */
-export const KEEP_URL = `${E}structures/keep_stone_01.glb`;

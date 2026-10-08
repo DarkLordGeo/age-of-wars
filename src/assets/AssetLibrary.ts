@@ -12,6 +12,8 @@ export interface AssetSpec {
   expectedHeight?: number;
   /** Skip during `preload()`; fetch on demand with `loadModel(key, url)`. For library assets the current scene doesn't use. */
   lazy?: boolean;
+  /** Adds extra parts (e.g. gear parented to a bone) to every instance of the loaded GLB. */
+  decorate?: (model: Object3D, tint: number) => void;
 }
 
 /** The part of a parsed glTF the library needs (lets tests feed parsed data directly). */
@@ -116,6 +118,7 @@ export class AssetLibrary {
         ? mesh.material.map((m) => this.teamMaterial(m, tint))
         : this.teamMaterial(mesh.material, tint);
     });
+    spec.decorate?.(obj, tint);
     return obj;
   }
 

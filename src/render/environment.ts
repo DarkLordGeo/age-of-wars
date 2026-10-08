@@ -1,6 +1,5 @@
 import {
   BufferAttribute,
-  CircleGeometry,
   Color,
   ConeGeometry,
   DirectionalLight,
@@ -19,17 +18,29 @@ import {
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import { GAME } from '../config/game';
 import { createRng } from '../sim/rng';
+import { DustMotes } from './age1/dust';
+import { addGrassTufts, type TuftPlacement } from './age1/grass';
+import { createTerrainMaterial } from './age1/terrainMaterial';
+import { addTreeInstances, buildConifer, buildDeadTree, type TreePlacement } from './age1/trees';
+import { WIND } from './age1/wind';
 import { addInstances, partsOf, type Placement } from './sceneryInstancing';
-import { LANE_CLEARANCE, terrainHeight } from './terrain';
+import { campDistance, CAMP_RADIUS, LANE_CLEARANCE, pathCenterZ, PATH_HALF_WIDTH, terrainHeight } from './terrain';
 
 const SKY = 0xa7c8e6;
 
+export interface Environment {
+  /** Advances wind, dust and other ambient animation. */
+  update(dt: number): void;
+}
+
 /**
- * Sky, lights, terrain, lane and scenery. Decorative only; nothing here affects gameplay.
- * Scenery comes from the free asset library (src/assets/scenery.ts) via instancing; whatever
- * fails to load falls back to the original procedural shapes.
+ * Sky, lights, terrain, the worn footpath and scenery. Decorative only; nothing here affects
+ * gameplay. Age 1 look: splat-blended meadow/dirt/rock ground, procedural conifers, swaying grass
+ * tufts and drifting dust (src/render/age1), plus CC0 rocks/cliffs/shrubs from the asset library
+ * (src/assets/scenery.ts) via instancing; library assets that fail to load fall back to
+ * procedural shapes.
  */
-export function buildEnvironment(scene: Scene, assets: AssetLibrary): void {
+export function buildEnvironment(scene: Scene, assets: AssetLibrary): Environment {
   scene.background = new Color(SKY);
   scene.fog = new Fog(SKY, 130, 330);
 
@@ -51,81 +62,164 @@ export function buildEnvironment(scene: Scene, assets: AssetLibrary): void {
   scene.add(sun);
 
   scene.add(buildTerrain());
-  buildLane(scene);
   addTrees(scene);
+  addGrass(scene);
   addRocks(scene, assets);
   addMountains(scene, assets);
   addGroundCover(scene, assets);
   addDeadwood(scene, assets);
-  addCamps(scene, assets);
+
+  const dust = new DustMotes(scene, { minX: -70, maxX: 70, minZ: -14, maxZ: 12, maxY: 5 });
+  return {
+    update(dt: number): void {
+      WIND.time.value += dt;
+      dust.update(dt);
+    },
+  };
+}
+
+/** Splat weights (dirt, rock, mud) for a ground point; grass is the remainder. */
+export function groundSplat(x: number, z: number, height: number, slope: number, noise: number): [number, number, number] {
+  // Worn footpath along the lane, ending in each camp's trampled yard.
+  const dz = Math.abs(z - pathCenterZ(x));
+  const onLane = Math.abs(x) <= GAME.baseOffset ? 1 : 0;
+  const path = onLane * (1 - smooth(PATH_HALF_WIDTH - 0.6, PATH_HALF_WIDTH + 1.8 + noise * 1.5, dz));
+  const verge = onLane * (1 - smooth(PATH_HALF_WIDTH + 1, PATH_HALF_WIDTH + 5, dz)) * 0.35;
+  const camp = campDistance(x, z);
+  const yard = 1 - smooth(CAMP_RADIUS - 5, CAMP_RADIUS + 1.5, camp);
+  const mud = (1 - smooth(0, CAMP_RADIUS - 4, camp)) * 0.75 + yard * 0.15 * noise;
+  // Scattered bare patches in the meadow.
+  const patches = Math.max(0, noise - 0.72) * 2.2;
+  const dirt = Math.min(1, Math.max(path, verge, yard * 0.9, patches));
+  const rock = Math.min(1, smooth(0.32, 0.55, slope) + smooth(11, 18, height) * 0.8);
+  return [dirt, rock, Math.min(1, mud)];
+}
+
+function smooth(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+function valueNoise(x: number, z: number): number {
+  const h = (i: number, j: number): number => {
+    const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const i = Math.floor(x);
+  const j = Math.floor(z);
+  const fx = x - i;
+  const fz = z - j;
+  const u = fx * fx * (3 - 2 * fx);
+  const w = fz * fz * (3 - 2 * fz);
+  return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - w) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * w;
 }
 
 function buildTerrain(): Mesh {
-  const geo = new PlaneGeometry(420, 260, 140, 87);
+  const geo = new PlaneGeometry(420, 260, 280, 174);
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, 0, -50);
   const pos = geo.attributes.position as BufferAttribute;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  const nrm = geo.attributes.normal as BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
-  const grass = new Color(0x5f8a3e);
-  const dry = new Color(0x7d8a45);
-  const rock = new Color(0x77766c);
+  const splat = new Float32Array(pos.count * 3);
   const c = new Color();
   for (let i = 0; i < pos.count; i++) {
-    const h = terrainHeight(pos.getX(i), pos.getZ(i));
-    pos.setY(i, h);
-    c.copy(grass).lerp(dry, Math.min(1, h / 6)).lerp(rock, Math.max(0, Math.min(1, (h - 8) / 8)));
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    const h = pos.getY(i);
+    const n = valueNoise(x * 0.11, z * 0.11) * 0.7 + valueNoise(x * 0.4, z * 0.4) * 0.3;
+    const [d, r, m] = groundSplat(x, z, h, 1 - nrm.getY(i), n);
+    splat[i * 3] = d;
+    splat[i * 3 + 1] = r;
+    splat[i * 3 + 2] = m;
+    // Gentle tint: the far slopes go cooler/darker, which helps depth.
+    const far = Math.max(0, Math.min(1, (-z - 30) / 90));
+    const v = 0.94 + n * 0.12;
+    c.setRGB(v * (1 - far * 0.12), v * (1 - far * 0.06), v * (1 - far * 0.02));
     c.toArray(colors, i * 3);
   }
   geo.setAttribute('color', new BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-  const mesh = new Mesh(geo, new MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+  geo.setAttribute('splat', new BufferAttribute(splat, 3));
+  const mesh = new Mesh(geo, createTerrainMaterial());
   mesh.receiveShadow = true;
+  mesh.name = 'Terrain';
   return mesh;
 }
 
-function buildLane(scene: Scene): void {
-  const flat = (w: number, d: number, color: number, y: number): Mesh => {
-    const m = new Mesh(new PlaneGeometry(w, d), new MeshStandardMaterial({ color, roughness: 1 }));
-    m.rotation.x = -Math.PI / 2;
-    m.position.y = y;
-    m.receiveShadow = true;
-    return m;
-  };
-  scene.add(flat(2 * GAME.baseOffset + 14, 9, 0x6e5f44, 0.02)); // worn verge
-  scene.add(flat(2 * GAME.baseOffset + 10, 6.5, 0x8a7352, 0.04)); // the lane itself
-  for (const sx of [-1, 1]) {
-    const pad = new Mesh(new CircleGeometry(9, 28), new MeshStandardMaterial({ color: 0x8c8a80, roughness: 1 }));
-    pad.rotation.x = -Math.PI / 2;
-    pad.position.set(sx * GAME.baseOffset, 0.06, 0);
-    pad.receiveShadow = true;
-    scene.add(pad);
-  }
-}
-
-/** Living trees are still procedural cones: no free tree met the quality/triangle budget (docs/ASSET_LICENSES.md). */
+/** Conifer groves behind the lane and around the camps, plus a few dead snags. */
 function addTrees(scene: Scene): void {
   const rng = createRng(7);
-  const count = 150;
-  const trunks = new InstancedMesh(new ConeGeometry(0.25, 1.6, 6), new MeshStandardMaterial({ color: 0x5b3a22 }), count);
-  const crowns = new InstancedMesh(new ConeGeometry(1.4, 3.6, 8), new MeshStandardMaterial({ color: 0x2f6b34, roughness: 1 }), count);
-  trunks.castShadow = crowns.castShadow = true;
-  const m = new Matrix4();
-  const q = new Quaternion();
-  const pos = new Vector3();
-  const scl = new Vector3();
-  for (let i = 0; i < count; i++) {
-    const x = (rng() * 2 - 1) * 150;
-    // Trees only behind the lane so they never block the camera's view of the fight.
-    const z = -(LANE_CLEARANCE + 1 + Math.pow(rng(), 0.8) * 70);
-    const s = 0.8 + rng() * 0.9;
-    const y = terrainHeight(x, z);
-    scl.setScalar(s);
-    m.compose(pos.set(x, y + 0.8 * s, z), q, scl);
-    trunks.setMatrixAt(i, m);
-    m.compose(pos.set(x, y + 3.3 * s, z), q, scl);
-    crowns.setMatrixAt(i, m);
+  const variants = [0, 1, 2, 3].map(buildConifer);
+  const dead = [0, 1].map(buildDeadTree);
+  const byVariant: TreePlacement[][] = variants.map(() => []);
+  const deadPl: TreePlacement[][] = dead.map(() => []);
+  const tint = new Color();
+
+  // Grove centres: mostly behind the lane, denser toward the back slope.
+  const groves: Array<{ x: number; z: number; r: number; n: number }> = [];
+  for (let i = 0; i < 18; i++) {
+    groves.push({ x: (rng() * 2 - 1) * 170, z: -(LANE_CLEARANCE + 6 + Math.pow(rng(), 0.7) * 85), r: 8 + rng() * 14, n: 8 + Math.floor(rng() * 14) });
   }
-  scene.add(trunks, crowns);
+  // Flank groves beyond the camps frame the battlefield on both sides.
+  for (const sx of [-1, 1]) groves.push({ x: sx * (GAME.baseOffset + 32), z: -6, r: 14, n: 22 });
+  const placed: Array<{ x: number; z: number }> = [];
+  for (const g of groves) {
+    for (let k = 0; k < g.n; k++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * g.r;
+      const x = g.x + Math.cos(a) * d;
+      const z = g.z + Math.sin(a) * d;
+      if (z > -LANE_CLEARANCE - 1 && Math.abs(x) < GAME.baseOffset + 18) continue; // keep the lane view clear
+      if (z > 4) continue;
+      if (campDistance(x, z) < CAMP_RADIUS + 4) continue;
+      if (placed.some((p) => (p.x - x) ** 2 + (p.z - z) ** 2 < 4.5)) continue;
+      placed.push({ x, z });
+      const isDead = rng() < 0.05;
+      const height = isDead ? 7 + rng() * 6 : 6.5 + rng() * 7 + Math.max(0, -z - 40) * 0.05;
+      const hue = rng();
+      tint.setRGB(0.85 + hue * 0.25, 0.92 + rng() * 0.15, 0.8 + hue * 0.15);
+      const p = { x, y: terrainHeight(x, z) - 0.15, z, height, rotY: rng() * Math.PI * 2, tint: tint.clone() };
+      if (isDead) deadPl[Math.floor(rng() * dead.length)]!.push(p);
+      else byVariant[Math.floor(rng() * variants.length)]!.push(p);
+    }
+  }
+  variants.forEach((v, i) => addTreeInstances(scene, v, byVariant[i]!));
+  dead.forEach((v, i) => addTreeInstances(scene, v, deadPl[i]!));
+}
+
+/** Grass tufts framing the footpath and scattered over the meadow (green and dry). */
+function addGrass(scene: Scene): void {
+  const rng = createRng(17);
+  const green: TuftPlacement[] = [];
+  const dry: TuftPlacement[] = [];
+  const tryPlace = (x: number, z: number, height: number, dryChance: number): void => {
+    const dz = Math.abs(z - pathCenterZ(x));
+    if (Math.abs(x) <= GAME.baseOffset + 2 && dz < PATH_HALF_WIDTH + 0.25 + rng() * 0.6) return; // keep the path bare
+    const camp = campDistance(x, z);
+    if (camp < CAMP_RADIUS - 1.2) return; // trampled yards
+    if (camp < CAMP_RADIUS + 0.6 && rng() < 0.6) return;
+    const y = terrainHeight(x, z);
+    if (y > 12) return;
+    const isDry = rng() < dryChance;
+    const v = 0.85 + rng() * 0.3;
+    const tint = isDry ? new Color(v, v * 0.97, v * 0.9) : new Color(v * (0.92 + rng() * 0.12), v, v * 0.85);
+    (isDry ? dry : green).push({ x, y: y - 0.03, z, height, rotY: rng() * Math.PI, tint });
+  };
+  // Dense band along both path edges (the verge), taller right at the edge.
+  for (let i = 0; i < 2600; i++) {
+    const x = (rng() * 2 - 1) * (GAME.baseOffset + 14);
+    const side = rng() < 0.5 ? -1 : 1;
+    const off = PATH_HALF_WIDTH + 0.3 + Math.pow(rng(), 1.8) * 6;
+    tryPlace(x, pathCenterZ(x) + side * off, 0.35 + rng() * 0.45 * (1 - (off - PATH_HALF_WIDTH) / 7), 0.3);
+  }
+  // Meadow in front of the lane (toward the camera): low, so units stay readable.
+  for (let i = 0; i < 1700; i++) tryPlace((rng() * 2 - 1) * 130, LANE_CLEARANCE - 4 + rng() * 34, 0.3 + rng() * 0.3, 0.35);
+  // Behind the lane: taller and denser near the trees.
+  for (let i = 0; i < 2600; i++) tryPlace((rng() * 2 - 1) * 150, -(4 + Math.pow(rng(), 1.3) * 70), 0.4 + rng() * 0.55, 0.25);
+  addGrassTufts(scene, 'grass_tuft_green.png', green);
+  addGrassTufts(scene, 'grass_tuft_dry.png', dry);
 }
 
 interface RockKind {
@@ -161,6 +255,7 @@ function addRocks(scene: Scene, assets: AssetLibrary): void {
     const isFront = rng() < 0.25;
     // Front rocks stay small and close to the lane so the foreground reads without hiding units.
     const z = isFront ? LANE_CLEARANCE + rng() * 5 : -(LANE_CLEARANCE + rng() * 45);
+    if (campDistance(x, z) < CAMP_RADIUS + 1.5) continue;
     const pool = isFront ? front : back;
     const kind = pool[Math.floor(rng() * pool.length)]!;
     const s = kind.scale[0] + rng() * (kind.scale[1] - kind.scale[0]);
@@ -276,11 +371,6 @@ interface Cover {
 }
 
 const COVER: Cover[] = [
-  { key: 'env.kit.grass', piece: 'grass_00', count: 80, scale: [3, 5], front: 0.15 },
-  { key: 'env.kit.grass', piece: 'grass_01', count: 80, scale: [3, 5], front: 0.15 },
-  { key: 'env.kit.grass', piece: 'grass_02', count: 60, scale: [3, 5], front: 0.1 },
-  { key: 'env.kit.fern', piece: 'fern_01', count: 30, scale: [1.2, 2.2], front: 0.1 },
-  { key: 'env.kit.fern', piece: 'fern_02', count: 30, scale: [1.2, 2.2], front: 0.1 },
   { key: 'env.kit.bush_dry', piece: 'bush_00', count: 18, scale: [2.5, 4], front: 0 },
   { key: 'env.kit.bush_dry', piece: 'bush_01', count: 18, scale: [3, 5], front: 0 },
   { key: 'env.kit.shrub', piece: 'shrub_02', count: 16, scale: [1.2, 2], front: 0, shadow: true },
@@ -300,6 +390,7 @@ function addGroundCover(scene: Scene, assets: AssetLibrary): void {
       const isFront = rng() < c.front;
       const z = isFront ? LANE_CLEARANCE + 0.5 + rng() * 12 : -(LANE_CLEARANCE + 0.5 + Math.pow(rng(), 0.9) * 75);
       const s = c.scale[0] + rng() * (c.scale[1] - c.scale[0]);
+      if (campDistance(x, z) < CAMP_RADIUS + 1) continue;
       tint.setRGB(1.0 + rng() * 0.35, 1.05 + rng() * 0.3, 0.9 + rng() * 0.3);
       list.push({
         x,
@@ -333,35 +424,10 @@ function addDeadwood(scene: Scene, assets: AssetLibrary): void {
       const x = (rng() * 2 - 1) * 130;
       const z = -(LANE_CLEARANCE + 2 + rng() * 55);
       const s = d.scale[0] + rng() * (d.scale[1] - d.scale[0]);
+      if (campDistance(x, z) < CAMP_RADIUS + 2) continue;
       const v = 0.75 + rng() * 0.25;
       tint.setRGB(v, v, v);
       list.push({ x, y: terrainHeight(x, z) - 0.03 * s, z, rotY: rng() * Math.PI * 2, scaleX: s, scaleY: s, scaleZ: s, tint: tint.clone() });
-    }
-    addInstances(scene, parts, list, { castShadow: true });
-  }
-}
-
-/** Supply props (crates, barrels, buckets, a fire pit) behind each base, clear of the lane corridor. */
-function addCamps(scene: Scene, assets: AssetLibrary): void {
-  const rng = createRng(51);
-  const spec: Array<{ key: string; count: number; scale: [number, number] }> = [
-    { key: 'env.prop.crate_01', count: 3, scale: [1.5, 1.9] },
-    { key: 'env.prop.crate_02', count: 3, scale: [1.4, 1.8] },
-    { key: 'env.prop.barrel_01', count: 4, scale: [1.5, 1.9] },
-    { key: 'env.prop.bucket_01', count: 2, scale: [1.6, 2] },
-    { key: 'env.prop.firepit_01', count: 1, scale: [1.2, 1.4] },
-  ];
-  for (const d of spec) {
-    const parts = partsOf(assets, d.key);
-    if (parts.length === 0) continue;
-    const list: Placement[] = [];
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < d.count; i++) {
-        const x = side * (GAME.baseOffset + 9 + rng() * 9);
-        const z = (rng() * 2 - 1) * 8;
-        const s = d.scale[0] + rng() * (d.scale[1] - d.scale[0]);
-        list.push({ x, y: terrainHeight(x, z), z, rotY: rng() * Math.PI * 2, scaleX: s, scaleY: s, scaleZ: s });
-      }
     }
     addInstances(scene, parts, list, { castShadow: true });
   }

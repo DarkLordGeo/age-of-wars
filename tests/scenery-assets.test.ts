@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { Box3, type Mesh, type Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { indexClips, MAX_UNIT_TRIANGLES, TEAM_COLOR_MATERIAL, validateModel } from '../src/assets/contract';
-import { KEEP_URL, SCENERY, type SceneryAsset } from '../src/assets/scenery';
+import { indexClips, MAX_UNIT_TRIANGLES, validateModel } from '../src/assets/contract';
+import { SCENERY, type SceneryAsset } from '../src/assets/scenery';
 
 // Node has no image decoding: stub it so GLTFLoader can parse embedded textures (geometry checks only).
 (globalThis as { self?: unknown }).self ??= globalThis;
@@ -45,11 +45,10 @@ describe('scenery library (public/models/env)', () => {
   it('has unique keys and every file exists', () => {
     assert.equal(new Set(SCENERY.map((a) => a.key)).size, SCENERY.length);
     for (const a of SCENERY) assert.ok(existsSync(fileOf(a.url)), `${a.key}: missing ${a.url}`);
-    assert.ok(existsSync(fileOf(KEEP_URL)));
   });
 
   it('boot payload stays small', () => {
-    const boot = SCENERY.filter((a) => a.preload).reduce((sum, a) => sum + statSync(fileOf(a.url)).size, 0) + statSync(fileOf(KEEP_URL)).size;
+    const boot = SCENERY.filter((a) => a.preload).reduce((sum, a) => sum + statSync(fileOf(a.url)).size, 0);
     assert.ok(boot < 30e6, `preloaded GLBs total ${(boot / 1e6).toFixed(1)} MB`);
   });
 
@@ -72,19 +71,6 @@ describe('scenery library (public/models/env)', () => {
       }
     });
   }
-
-  it('the keep carries a TeamColor material and fits the base footprint', async () => {
-    const { scene } = await load(KEEP_URL);
-    const names = new Set<string>();
-    scene.traverse((o) => {
-      const m = (o as Mesh).material;
-      for (const mat of Array.isArray(m) ? m : m ? [m] : []) names.add(mat.name);
-    });
-    assert.ok(names.has(TEAM_COLOR_MATERIAL), `materials: ${[...names].join(', ')}`);
-    const box = new Box3().setFromObject(scene);
-    assert.ok(Math.abs(box.min.y) < 0.05);
-    assert.ok(box.max.x - box.min.x < 14 && box.max.y < 14);
-  });
 });
 
 describe('soldier.glb (production unit)', () => {
