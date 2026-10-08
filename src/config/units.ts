@@ -1,56 +1,60 @@
+import { frames, u } from './original';
 import type { UnitDef } from './schema';
 
-/** Unit roster. Add a unit here, list it in an age (ages.ts) and register its model key. */
+/**
+ * Age 1 roster, from the original game's data (docs/AGE1_SPEC.md sections 2-4, source:
+ * erupturatis/Age-of-war-unity-clone Data.cs / Troop.cs). Distances converted with `u()`,
+ * frame counts with `frames()`. Hit interval = melee_speed + attack_pause / 41.
+ */
+
+/** Every unit walks at 40 original units/s. */
+const SPEED = u(40);
+
 export const UNITS: Record<string, UnitDef> = {
-  soldier: {
-    id: 'soldier',
-    name: 'Soldier',
+  clubman: {
+    id: 'clubman',
+    name: 'Clubman',
     role: 'melee',
-    modelKey: 'unit.soldier',
-    cost: 25,
-    spawnTime: 2.5,
-    maxHealth: 100,
-    speed: 3.2,
-    radius: 0.45,
-    detectionRange: 12,
-    attack: { damage: 12, range: 1.6, cooldown: 0.8 },
-    muzzleHeight: 1.2,
-    aimHeight: 1.2,
-    goldReward: 14,
-    xpReward: 20,
+    modelKey: 'unit.clubman',
+    cost: 15,
+    spawnTime: frames(40),
+    maxHealth: 55,
+    speed: SPEED,
+    length: u(20),
+    height: 1.8,
+    melee: { damage: 16, range: u(20), firstHit: 0.43, interval: 1 + frames(20) },
   },
-  archer: {
-    id: 'archer',
-    name: 'Archer',
+  slingshot: {
+    id: 'slingshot',
+    name: 'Slingshot Man',
     role: 'ranged',
-    modelKey: 'unit.archer',
-    cost: 35,
-    spawnTime: 3.5,
-    maxHealth: 60,
-    speed: 3.0,
-    radius: 0.4,
-    detectionRange: 14,
-    attack: { damage: 10, range: 11, cooldown: 1.2, projectileId: 'arrow' },
-    muzzleHeight: 1.5,
-    aimHeight: 1.1,
-    goldReward: 20,
-    xpReward: 30,
+    modelKey: 'unit.slingshot',
+    cost: 25,
+    spawnTime: frames(40),
+    maxHealth: 42,
+    speed: SPEED,
+    length: u(20),
+    height: 1.8,
+    melee: { damage: 10, range: u(20), firstHit: 0.43, interval: 1 + frames(20) },
+    ranged: {
+      damage: 8,
+      range: u(100),
+      intervalStanding: 0.8 + frames(20),
+      intervalWalking: 1.07 + frames(20),
+      projectileId: 'sling_stone',
+    },
   },
-  brute: {
-    id: 'brute',
-    name: 'Brute',
+  dino: {
+    id: 'dino',
+    name: 'Dino Rider',
     role: 'tank',
-    modelKey: 'unit.brute',
-    cost: 80,
-    spawnTime: 6,
-    maxHealth: 350,
-    speed: 2.4,
-    radius: 0.7,
-    detectionRange: 12,
-    attack: { damage: 28, range: 1.9, cooldown: 1.3 },
-    muzzleHeight: 1.6,
-    aimHeight: 1.5,
-    goldReward: 50,
-    xpReward: 70,
+    modelKey: 'unit.dino',
+    cost: 100,
+    spawnTime: frames(100),
+    maxHealth: 160,
+    speed: SPEED,
+    length: u(80),
+    height: 3.2,
+    melee: { damage: 40, range: u(20), firstHit: 0.32, interval: 1.12 + frames(45) },
   },
 };

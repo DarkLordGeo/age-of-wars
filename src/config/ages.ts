@@ -1,17 +1,20 @@
 import type { AgeDef } from './schema';
 
-/** Ordered ages. Only the first is playable for now; append entries to add more. */
+/**
+ * Ordered ages. Only the first is playable for now; append entries to add more.
+ * Age 1 (original "cave" age): base HP 500, 4000 XP to evolve (docs/AGE1_SPEC.md section 1).
+ */
 export const AGES: AgeDef[] = [
   {
-    id: 'dawn',
-    name: 'Dawn Age',
+    id: 'stone',
+    name: 'Stone Age',
     xpRequired: 0,
-    turretId: 'watchtower',
-    units: [
-      { unitId: 'soldier', unlockXp: 0 },
-      { unitId: 'archer', unlockXp: 60 },
-      { unitId: 'brute', unlockXp: 200 },
-    ],
-    upgrades: ['sharpened_weapons', 'hardened_armor', 'reinforced_walls', 'ballista_tuning', 'trade_routes'],
+    baseHealth: 500,
+    units: ['clubman', 'slingshot', 'dino'],
+    turrets: ['rock_slingshot', 'egg_automatic', 'primitive_catapult'],
+    upgrades: [],
   },
 ];
+
+/** XP needed to leave the last defined age (age 2 is not implemented yet). */
+export const NEXT_AGE_XP = 4000;

@@ -8,7 +8,7 @@ describe('victory and defeat', () => {
     const w = makeWorld();
     const log = new EventLog();
     w.bases.enemy.health = 20;
-    w.spawnUnit('player', 'soldier').health = 1e6; // survive the turret
+    w.spawnUnit('player', 'clubman').health = 1e6; // survive the turret
 
     assert.ok(runUntil(w, () => w.status !== 'playing', 40, log) >= 0);
     assert.equal(w.status, 'victory');
@@ -16,7 +16,7 @@ describe('victory and defeat', () => {
     assert.equal(log.count('defeat'), 0);
     run(w, 1, log);
     assert.equal(log.count('victory'), 1, 'emitted once');
-    assert.equal(w.enqueueUnit('player', 'soldier'), 'game-over');
+    assert.equal(w.enqueueUnit('player', 'clubman'), 'game-over');
     assert.equal(w.purchaseUpgrade('player', 'trade_routes'), 'game-over');
     const t = w.time;
     run(w, 1);
@@ -27,7 +27,7 @@ describe('victory and defeat', () => {
     const w = makeWorld();
     const log = new EventLog();
     w.bases.player.health = 20;
-    w.spawnUnit('enemy', 'soldier').health = 1e6;
+    w.spawnUnit('enemy', 'clubman').health = 1e6;
 
     assert.ok(runUntil(w, () => w.status !== 'playing', 40, log) >= 0);
     assert.equal(w.status, 'defeat');
@@ -38,7 +38,7 @@ describe('victory and defeat', () => {
   it('emits baseDamage events that track base health', () => {
     const w = makeWorld();
     const log = new EventLog();
-    w.spawnUnit('player', 'soldier').health = 1e6;
+    w.spawnUnit('player', 'clubman').health = 1e6;
     run(w, 25, log);
     const events = log.of('baseDamage').filter((e) => e.team === 'enemy');
     assert.ok(events.length > 0);
@@ -52,9 +52,9 @@ describe('event hooks', () => {
     const log = new EventLog();
     w.teams.player.xp = 100;
     w.teams.player.gold = 500;
-    w.enqueueUnit('player', 'archer');
-    w.enqueueUnit('player', 'soldier');
-    w.spawnUnit('enemy', 'soldier').health = 30;
+    w.enqueueUnit('player', 'slingshot');
+    w.enqueueUnit('player', 'clubman');
+    w.spawnUnit('enemy', 'clubman').health = 30;
     w.bases.enemy.health = 15;
     run(w, 60, log);
     for (const type of ['spawn', 'attack', 'projectileFired', 'projectileImpact', 'hit', 'death', 'baseDamage', 'victory'] as const) {
@@ -70,7 +70,7 @@ describe('long-running battles', () => {
     let maxProjectiles = 0;
     for (let i = 0; i < (15 * 60) / DT; i++) {
       // Scripted player: keep training the best unit it can.
-      if (i % 90 === 0) for (const id of ['brute', 'archer', 'soldier']) if (w.enqueueUnit('player', id) === 'ok') break;
+      if (i % 90 === 0) for (const id of ['dino', 'slingshot', 'clubman']) if (w.enqueueUnit('player', id) === 'ok') break;
       if (i % 600 === 0) w.purchaseUpgrade('player', 'sharpened_weapons');
       w.step(DT);
       w.drainEvents(() => undefined);
@@ -91,7 +91,7 @@ describe('long-running battles', () => {
   it('alive lists stay sorted and consistent with unit state', () => {
     const w = makeWorld({ ai: true });
     for (let i = 0; i < 120 / DT; i++) {
-      if (i % 120 === 0) w.enqueueUnit('player', 'soldier');
+      if (i % 120 === 0) w.enqueueUnit('player', 'clubman');
       w.step(DT);
       w.drainEvents(() => undefined);
       for (const team of ['player', 'enemy'] as const) {
@@ -108,8 +108,8 @@ describe('long-running battles', () => {
   it('handles a thousand units without blowing up', () => {
     const w = makeWorld();
     for (let i = 0; i < 500; i++) {
-      w.spawnUnit('player', i % 3 === 0 ? 'archer' : 'soldier');
-      w.spawnUnit('enemy', i % 3 === 0 ? 'archer' : 'brute');
+      w.spawnUnit('player', i % 3 === 0 ? 'slingshot' : 'clubman');
+      w.spawnUnit('enemy', i % 3 === 0 ? 'slingshot' : 'dino');
     }
     const t0 = performance.now();
     run(w, 10);

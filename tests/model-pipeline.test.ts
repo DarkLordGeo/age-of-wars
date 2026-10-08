@@ -10,7 +10,7 @@ import { UnitView } from '../src/render/UnitView';
 import { makeWorld } from './helpers';
 import { buildTestRigGlb, type TestRigOptions } from './fixtures/testRig';
 
-const KEY = 'unit.soldier';
+const KEY = 'unit.clubman';
 
 function parse(opts?: TestRigOptions): Promise<LoadedGltf> {
   return new GLTFLoader().parseAsync(buildTestRigGlb(opts), '') as Promise<LoadedGltf>;
@@ -162,18 +162,21 @@ describe('UnitView with an animated model', () => {
   it('drives clips from sim state and survives pooling', async () => {
     const { lib } = await libraryWithRig();
     const w = makeWorld();
-    const unit = w.spawnUnit('player', 'soldier');
+    const unit = w.spawnUnit('player', 'clubman');
     const view = new UnitView('k', lib.instantiate(KEY, 1), lib.clipsFor(KEY));
     assert.ok(view.animator);
 
     unit.state = 'waiting';
+    unit.moving = false;
     view.bind(unit);
     assert.equal(view.animator.playing, 'idle', 'waiting → idle');
     unit.state = 'advancing';
+    unit.moving = true;
     view.update(0.016, null);
     assert.equal(view.animator.playing, 'walk', 'advancing → walk');
 
     unit.state = 'attacking';
+    unit.moving = false;
     view.triggerAttack();
     assert.equal(view.animator.playing, 'attack');
     for (let i = 0; i < 20; i++) view.update(0.1, null);
@@ -184,11 +187,12 @@ describe('UnitView with an animated model', () => {
     assert.equal(view.animator.playing, 'death');
 
     // Reuse the same view for a different unit, as the pool does.
-    const next = w.spawnUnit('enemy', 'soldier');
+    const next = w.spawnUnit('enemy', 'clubman');
     next.state = 'waiting';
+    next.moving = false;
     view.bind(next);
     assert.equal(view.animator.playing, 'idle', 'pooled view is reset');
-    assert.equal(view.root.position.x, next.x);
+    assert.equal(view.root.position.x, next.centerX(-1));
   });
 
   it('placeholder models keep the procedural path', () => {
@@ -197,7 +201,7 @@ describe('UnitView with an animated model', () => {
     const view = new UnitView('k', lib.instantiate(KEY, 1), lib.clipsFor(KEY));
     assert.equal(view.animator, null);
     const w = makeWorld();
-    const unit = w.spawnUnit('player', 'soldier');
+    const unit = w.spawnUnit('player', 'clubman');
     view.bind(unit);
     view.triggerAttack();
     view.update(0.05, null);

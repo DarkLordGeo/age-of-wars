@@ -5,6 +5,8 @@ export interface QueueItem {
   defId: string;
   remaining: number;
   total: number;
+  /** Gold paid (refunded on cancel); 0 for AI-free units. */
+  paid: number;
 }
 
 interface StatMod {
@@ -28,7 +30,6 @@ export class TeamState {
   constructor(
     readonly team: Team,
     startGold: number,
-    readonly incomeMultiplier: number,
   ) {
     this.gold = startGold;
     this.resetMods();

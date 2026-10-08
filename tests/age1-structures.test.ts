@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Box3, Vector3, type BufferAttribute, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
 import { GAME } from '../src/config/game';
-import { TURRETS } from '../src/config/turrets';
+import { UNITS } from '../src/config/units';
+import { createDinoRider } from '../src/render/age1/dino';
+import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot, createSlotTower, deckY, TURRET_MUZZLE } from '../src/render/age1/turrets';
 import { createSettlement, SETTLEMENT } from '../src/render/age1/settlement';
 import { buildConifer, buildDeadTree } from '../src/render/age1/trees';
-import { createWatchtower, WATCHTOWER } from '../src/render/age1/watchtower';
 import { groundSplat } from '../src/render/environment';
-import { createArrowGeometry } from '../src/render/ProjectileRenderer';
 import { campDistance, CAMP_RADIUS, pathCenterZ, PATH_HALF_WIDTH, terrainHeight } from '../src/render/terrain';
 
 const TINT = 0x2f6fdb;
@@ -65,10 +65,10 @@ describe('Age 1 settlement (base.keep)', () => {
     assert.equal(verticesInside(camp, corridor), 0);
   });
 
-  it('keeps the turret mount free of palisade stakes', () => {
-    const m = GAME.turretMounts[0]!;
-    const r = 1.5;
-    const mount = new Box3(new Vector3(m.forward - r, 0.05, m.side - r), new Vector3(m.forward + r, 4, m.side + r));
+  it('keeps the turret tower footprint free of palisade stakes', () => {
+    const m = GAME.turretTower;
+    const r = 1.4;
+    const mount = new Box3(new Vector3(m.forward - r, 0.05, m.side - r), new Vector3(m.forward + r, 15, m.side + r));
     assert.equal(verticesInside(camp, mount), 0);
   });
 
@@ -88,23 +88,38 @@ describe('Age 1 settlement (base.keep)', () => {
   });
 });
 
-describe('Age 1 watchtower (turret.watchtower)', () => {
-  const tower = createWatchtower(TINT);
-
-  it('has a recoiling Weapon at the turret muzzle height, with a nocked arrow', () => {
-    const weapon = tower.getObjectByName('Weapon');
-    assert.ok(weapon);
-    assert.ok(Math.abs(weapon.position.y - TURRETS.watchtower!.muzzleHeight) < 0.2);
-    assert.equal(WATCHTOWER.muzzleY, TURRETS.watchtower!.muzzleHeight);
-    assert.ok(weapon.getObjectByName('NockedArrow'));
+describe('Age 1 slot tower and turrets', () => {
+  it('has one deck per bought slot, decks just below the sim muzzle heights', () => {
+    for (let n = 1; n <= GAME.slotHeights.length; n++) {
+      const tower = createSlotTower(TINT, n);
+      const box = new Box3().setFromObject(tower);
+      assert.ok(Math.abs(box.min.y) < 0.25);
+      assert.ok(box.max.y > deckY(n - 1) && box.max.y < GAME.slotHeights[n - 1]! + 2, `top ${box.max.y}`);
+      assert.ok(teamColored(tower).length >= 1);
+      assert.ok(triangles(tower) < 20000);
+    }
+    assert.ok(Math.abs(deckY(0) + TURRET_MUZZLE - GAME.slotHeights[0]!) < 1e-9);
   });
 
-  it('flies a team pennant and stays within budget', () => {
-    assert.ok(teamColored(tower).length >= 1);
-    const tris = triangles(tower);
-    assert.ok(tris < 12000, `${tris} triangles`);
-    const box = new Box3().setFromObject(tower);
-    assert.ok(Math.abs(box.min.y) < 0.25 && box.max.y < 11);
+  it('every Age 1 turret has a Weapon near the muzzle height and stays small', () => {
+    for (const make of [createRockSlingshot, () => createEggAutomatic(TINT), createPrimitiveCatapult]) {
+      const t = make();
+      const weapon = t.getObjectByName('Weapon');
+      assert.ok(weapon, t.name);
+      assert.ok(Math.abs(weapon.position.y - TURRET_MUZZLE) < 0.2, t.name);
+      const box = new Box3().setFromObject(t);
+      assert.ok(box.max.y < 2 && Math.abs(box.min.y) < 0.2, `${t.name} ${box.min.y}..${box.max.y}`);
+      assert.ok(triangles(t) < 6000);
+    }
+  });
+
+  it('the Dino Rider matches its sim footprint', () => {
+    const d = createDinoRider(TINT);
+    const box = new Box3().setFromObject(d);
+    const len = box.max.x - box.min.x;
+    assert.ok(Math.abs(len - UNITS.dino!.length) < 1.2, `length ${len}`);
+    assert.ok(Math.abs(box.max.y - UNITS.dino!.height) < 0.6, `height ${box.max.y}`);
+    assert.equal(typeof d.userData.animate, 'function');
   });
 });
 
@@ -131,7 +146,7 @@ describe('Age 1 terrain', () => {
   });
 });
 
-describe('Age 1 trees and arrows', () => {
+describe('Age 1 trees', () => {
   it('conifers are ~1 m tall unit trees within budget', () => {
     for (let s = 0; s < 4; s++) {
       const t = buildConifer(s);
@@ -144,11 +159,4 @@ describe('Age 1 trees and arrows', () => {
     assert.ok(buildDeadTree(0).tris < 600);
   });
 
-  it('the arrow mesh is 1 m long with its head at +X', () => {
-    const g = createArrowGeometry();
-    g.computeBoundingBox();
-    const b = g.boundingBox!;
-    assert.ok(Math.abs(b.max.x - b.min.x - 1) < 0.05, `length ${b.max.x - b.min.x}`);
-    assert.ok(b.max.x > 0.45);
-  });
 });

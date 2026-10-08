@@ -14,17 +14,20 @@ export function canAdvanceAge(content: Content, ts: TeamState): boolean {
   return next !== null && ts.xp >= next.xpRequired;
 }
 
-/** XP needed to unlock `unitId`, or null if no reached age offers it. */
-export function unitUnlockXp(content: Content, ts: TeamState, unitId: string): number | null {
-  for (let i = 0; i <= ts.ageIndex; i++) {
-    for (const u of content.ages[i]!.units) if (u.unitId === unitId) return u.unlockXp;
-  }
-  return null;
+/** Units of every reached age are trainable (the original has no XP unlocks inside an age). */
+export function isUnitUnlocked(content: Content, ts: TeamState, unitId: string): boolean {
+  for (let i = 0; i <= ts.ageIndex; i++) if (content.ages[i]!.units.includes(unitId)) return true;
+  return false;
 }
 
-export function isUnitUnlocked(content: Content, ts: TeamState, unitId: string): boolean {
-  const need = unitUnlockXp(content, ts, unitId);
-  return need !== null && ts.xp >= need;
+/** Turrets of the current age can be built. */
+export function isTurretAvailable(content: Content, ts: TeamState, turretId: string): boolean {
+  return currentAge(content, ts).turrets.includes(turretId);
+}
+
+/** XP needed to leave the current age (null in the last age, where evolving is not possible). */
+export function xpToEvolve(content: Content, ts: TeamState, fallback: number | null): number | null {
+  return nextAge(content, ts)?.xpRequired ?? fallback;
 }
 
 /** Upgrades offered by reached ages that are not yet owned and whose prerequisites are met. */

@@ -1,18 +1,14 @@
 import { CONTENT } from '../config/content';
 import { GAME } from '../config/game';
-import { lookup, type AttackDef, type Content, type UnitDef, type UpgradeDef } from '../config/schema';
+import { NEXT_AGE_XP } from '../config/ages';
+import { lookup, type Content, type UnitDef, type UpgradeDef } from '../config/schema';
 import { Base, Turret } from './Base';
-import { EnemyAi } from './EnemyAi';
+import { OriginalAi } from './OriginalAi';
 import { Projectile } from './Projectile';
 import { TeamState } from './TeamState';
 import { Unit } from './Unit';
 import { createRng } from './rng';
-import {
-  availableUpgrades,
-  canAdvanceAge,
-  currentAge,
-  isUnitUnlocked,
-} from './progression';
+import { availableUpgrades, canAdvanceAge, currentAge, isTurretAvailable, isUnitUnlocked, xpToEvolve } from './progression';
 import {
   opposite,
   teamDir,
@@ -20,12 +16,14 @@ import {
   type EnqueueResult,
   type GameStatus,
   type SimEvent,
+  type SlotResult,
   type Team,
+  type TurretResult,
 } from './types';
 
 export interface WorldOptions {
   content?: Content;
-  /** Key into content.ai. */
+  /** Key into content.ai: the enemy's difficulty. */
   difficulty?: string;
   /** Set false to run without the enemy AI (tests, scripted scenarios). */
   ai?: boolean;
@@ -34,17 +32,15 @@ export interface WorldOptions {
   seed?: number;
 }
 
-/** Reusable result slot for target queries (avoids per-tick allocation). */
-interface TargetSlot {
-  unit: Unit | null;
-  base: Base | null;
-  /** Edge-to-edge distance along the lane. */
-  distance: number;
-}
-
 /**
- * Pure game simulation. No Three.js, no DOM, no wall-clock: advance it with step(dt).
- * Presentation layers read the public state and consume events via drainEvents().
+ * Pure game simulation following the original Age of War rules (docs/AGE1_SPEC.md).
+ * No Three.js, no DOM, no wall-clock: advance it with step(dt). Presentation layers read the
+ * public state and consume events via drainEvents().
+ *
+ * Lane model: x is each unit's front. A team's units walk in single file (no passing): a unit
+ * stops when the gap to the body of the ally ahead is at most GAME.minUnitGap; the leading unit
+ * stops that far from the enemy's front unit, or at the enemy base edge. Every unit attacks only
+ * the enemy team's FRONT unit (or the base when none is left).
  */
 export class World {
   readonly content: Content;
@@ -55,9 +51,11 @@ export class World {
   readonly projectiles: Projectile[] = [];
   readonly bases: Record<Team, Base>;
   readonly teams: Record<Team, TeamState>;
-  readonly ai: EnemyAi | null;
+  readonly ai: OriginalAi | null;
   /** Present only when the player team is AI-driven (attract mode). */
-  readonly playerAi: EnemyAi | null;
+  readonly playerAi: OriginalAi | null;
+  /** Unit HP/damage multiplier per team (difficulty applies to the AI side). */
+  readonly statMultiplier: Record<Team, number> = { player: 1, enemy: 1 };
 
   time = 0;
   status: GameStatus = 'playing';
@@ -67,7 +65,6 @@ export class World {
   private readonly events: SimEvent[] = [];
   private readonly rng: () => number;
   private readonly projectilePool: Projectile[] = [];
-  private readonly scratch: TargetSlot = { unit: null, base: null, distance: Infinity };
   private nextId = 1;
   private nextProjectileId = 1;
 
@@ -75,45 +72,107 @@ export class World {
     this.content = opts.content ?? CONTENT;
     this.rng = createRng(opts.seed ?? GAME.seed);
     const profile = this.content.ai[opts.difficulty ?? GAME.defaultDifficulty];
+    const hp = this.content.ages[0]!.baseHealth;
 
     this.bases = {
-      player: new Base('player', -GAME.baseOffset, GAME.baseRadius, GAME.baseMaxHealth),
-      enemy: new Base('enemy', GAME.baseOffset, GAME.baseRadius, GAME.baseMaxHealth),
+      player: new Base('player', -GAME.baseOffset, GAME.baseRadius, hp),
+      enemy: new Base('enemy', GAME.baseOffset, GAME.baseRadius, hp),
     };
     this.teams = {
-      player: new TeamState('player', GAME.economy.startGold, 1),
-      enemy: new TeamState('enemy', profile?.startGold ?? GAME.economy.startGold, profile?.incomeMultiplier ?? 1),
+      player: new TeamState('player', GAME.economy.startGold),
+      enemy: new TeamState('enemy', GAME.economy.startGold),
     };
-    for (const team of TEAMS) this.equipTurrets(team);
-    this.ai = opts.ai !== false && profile ? new EnemyAi(this, profile) : null;
+    this.ai = opts.ai !== false && profile ? new OriginalAi(this, profile, 'enemy') : null;
+    if (this.ai) this.statMultiplier.enemy = profile!.statMultiplier;
     const auto = opts.autoPlayer ? this.content.ai[opts.autoPlayer] : undefined;
-    this.playerAi = auto ? new EnemyAi(this, { ...auto, seed: auto.seed + 101 }, 'player') : null;
+    this.playerAi = auto ? new OriginalAi(this, { ...auto, seed: auto.seed + 101 }, 'player') : null;
+    if (this.playerAi) this.statMultiplier.player = auto!.statMultiplier;
   }
 
   // ---------------------------------------------------------------- commands
 
-  /** Pay for a unit and add it to the team's production queue. */
-  enqueueUnit(team: Team, unitId: string): EnqueueResult {
+  /** Pay for a unit and add it to the team's production queue (`free`: the AI, which has no economy). */
+  enqueueUnit(team: Team, unitId: string, opts: { free?: boolean } = {}): EnqueueResult {
     if (this.status !== 'playing') return 'game-over';
     const def = this.content.units[unitId];
     if (!def) return 'unknown-unit';
     const ts = this.teams[team];
     if (!isUnitUnlocked(this.content, ts, unitId)) return 'locked';
     if (ts.queue.length >= GAME.economy.queueSize) return 'queue-full';
-    if (ts.gold < def.cost) return 'unaffordable';
-    ts.gold -= def.cost;
-    ts.queue.push({ defId: unitId, remaining: def.spawnTime, total: def.spawnTime });
+    if (!opts.free) {
+      if (ts.gold < def.cost) return 'unaffordable';
+      ts.gold -= def.cost;
+    }
+    ts.queue.push({ defId: unitId, remaining: def.spawnTime, total: def.spawnTime, paid: opts.free ? 0 : def.cost });
     return 'ok';
   }
 
-  /** Remove a queued unit and refund its full cost. */
+  /** Remove a queued unit and refund what was paid for it. */
   cancelQueued(team: Team, index: number): boolean {
     const ts = this.teams[team];
     const item = ts.queue[index];
     if (!item || this.status !== 'playing') return false;
     ts.queue.splice(index, 1);
-    ts.gold += lookup(this.content.units, item.defId, 'unit').cost;
+    ts.gold += item.paid;
     return true;
+  }
+
+  /**
+   * Build a turret on a bought, empty slot (default: the lowest free one). `free`: AI scripts.
+   */
+  buildTurret(team: Team, turretId: string, slot?: number, opts: { free?: boolean } = {}): TurretResult {
+    if (this.status !== 'playing') return 'game-over';
+    const def = this.content.turrets[turretId];
+    if (!def) return 'unknown-turret';
+    const ts = this.teams[team];
+    if (!isTurretAvailable(this.content, ts, turretId)) return 'locked';
+    const base = this.bases[team];
+    const s = slot ?? base.turrets.findIndex((t, i) => i < base.slots && t === null);
+    if (s < 0 || s >= base.slots) return 'no-free-slot';
+    if (base.turrets[s]) return 'slot-taken';
+    if (!opts.free) {
+      if (ts.gold < def.cost) return 'unaffordable';
+      ts.gold -= def.cost;
+    }
+    const tower = this.towerPosition(team);
+    base.turrets[s] = new Turret(s, def, tower.x, GAME.slotHeights[s]!, tower.z);
+    this.events.push({ type: 'turretBuilt', team, slot: s, turretId });
+    return 'ok';
+  }
+
+  /** Sell the turret on `slot` for GAME.turretSellRefund of its price. */
+  sellTurret(team: Team, slot: number, opts: { refund?: boolean } = {}): TurretResult {
+    if (this.status !== 'playing') return 'game-over';
+    const base = this.bases[team];
+    const t = base.turrets[slot];
+    if (!t) return 'empty-slot';
+    base.turrets[slot] = null;
+    const refund = opts.refund === false ? 0 : Math.floor(t.def.cost * GAME.turretSellRefund);
+    this.teams[team].gold += refund;
+    this.events.push({ type: 'turretSold', team, slot, turretId: t.def.id, refund });
+    return 'ok';
+  }
+
+  /** Price of the next turret slot, or null when all four are bought. */
+  nextSlotCost(team: Team): number | null {
+    return GAME.slotCosts[this.bases[team].slots - 1] ?? null;
+  }
+
+  buySlot(team: Team): SlotResult {
+    if (this.status !== 'playing') return 'game-over';
+    const cost = this.nextSlotCost(team);
+    if (cost === null) return 'max-slots';
+    const ts = this.teams[team];
+    if (ts.gold < cost) return 'unaffordable';
+    ts.gold -= cost;
+    this.bases[team].slots++;
+    this.events.push({ type: 'slotBought', team, slots: this.bases[team].slots });
+    return 'ok';
+  }
+
+  /** XP needed to evolve from the current age (shown in the HUD even before age 2 exists). */
+  xpToEvolve(team: Team): number | null {
+    return xpToEvolve(this.content, this.teams[team], NEXT_AGE_XP);
   }
 
   canAdvanceAge(team: Team): boolean {
@@ -123,9 +182,13 @@ export class World {
   advanceAge(team: Team): boolean {
     if (!this.canAdvanceAge(team)) return false;
     const ts = this.teams[team];
+    const prevHp = currentAge(this.content, ts).baseHealth;
     ts.ageIndex++;
-    this.equipTurrets(team);
-    this.events.push({ type: 'ageAdvanced', team, ageId: currentAge(this.content, ts).id });
+    const age = currentAge(this.content, ts);
+    const base = this.bases[team];
+    base.maxHealth = age.baseHealth;
+    base.health += age.baseHealth - prevHp;
+    this.events.push({ type: 'ageAdvanced', team, ageId: age.id });
     return true;
   }
 
@@ -146,24 +209,18 @@ export class World {
     ts.gold -= up.cost;
     ts.upgrades.add(upgradeId);
     ts.rebuildModifiers(this.content);
-
-    const base = this.bases[team];
-    const newMax = ts.stat('base', 'maxHealth', GAME.baseMaxHealth);
-    base.health += Math.max(0, newMax - base.maxHealth);
-    base.maxHealth = newMax;
-
     this.events.push({ type: 'upgradePurchased', team, upgradeId });
     return 'ok';
   }
 
   /** Spawn a unit immediately at the team's base, ignoring cost and queue (tests, scenarios). */
-  spawnUnit(team: Team, unitId: string): Unit {
+  spawnUnit(team: Team, unitId: string, x?: number): Unit {
     const def = lookup(this.content.units, unitId, 'unit');
-    const base = this.bases[team];
-    const x = base.x + teamDir(team) * (base.radius + def.radius + 0.5);
+    const ts = this.teams[team];
+    const mult = this.statMultiplier[team];
     const z = (this.rng() * 2 - 1) * GAME.laneHalfWidth;
-    const maxHealth = this.teams[team].stat('units', 'maxHealth', def.maxHealth);
-    const unit = new Unit(this.nextId++, def, team, x, z, maxHealth);
+    const maxHealth = Math.floor(ts.stat('units', 'maxHealth', def.maxHealth) * mult);
+    const unit = new Unit(this.nextId++, def, team, x ?? this.spawnX(team, def), z, maxHealth, mult);
     this.units.push(unit);
     this.alive[team].push(unit);
     this.sortLane(team);
@@ -171,26 +228,34 @@ export class World {
     return unit;
   }
 
+  /** Where the turret tower stands (slots stack up it). */
+  towerPosition(team: Team): { x: number; z: number } {
+    return { x: this.bases[team].x + teamDir(team) * GAME.turretTower.forward, z: GAME.turretTower.side };
+  }
+
   // -------------------------------------------------------------- simulation
 
   step(dt: number): void {
     if (this.status !== 'playing') {
       this.tickCorpses(dt);
+      this.updateProjectiles(dt);
       return;
     }
     this.time += dt;
 
-    for (const team of TEAMS) {
-      const ts = this.teams[team];
-      ts.gold += ts.stat('base', 'income', GAME.economy.baseIncomePerSec * ts.incomeMultiplier) * dt;
+    if (GAME.economy.baseIncomePerSec > 0) {
+      for (const team of TEAMS) {
+        const ts = this.teams[team];
+        ts.gold += ts.stat('base', 'income', GAME.economy.baseIncomePerSec) * dt;
+      }
     }
     this.ai?.update(dt);
     this.playerAi?.update(dt);
 
-    for (const team of TEAMS) this.sortLane(team);
     this.updateProduction(dt);
+    for (const team of TEAMS) this.sortLane(team);
     this.updateUnits(dt);
-    for (const team of TEAMS) this.sortLane(team); // passing ranged allies can reorder the lane
+    for (const team of TEAMS) this.sortLane(team);
     this.updateTurrets(dt);
     this.updateProjectiles(dt);
     this.resolveDeaths();
@@ -207,6 +272,10 @@ export class World {
 
   // -------------------------------------------------------------- production
 
+  private spawnX(team: Team, def: UnitDef): number {
+    return this.bases[team].x + teamDir(team) * def.length;
+  }
+
   private updateProduction(dt: number): void {
     for (const team of TEAMS) {
       const q = this.teams[team].queue;
@@ -215,7 +284,7 @@ export class World {
       head.remaining = Math.max(0, head.remaining - dt);
       if (head.remaining > 0) continue;
       const def = lookup(this.content.units, head.defId, 'unit');
-      if (!this.spawnPointClear(team, def)) continue; // wait for the exit to clear
+      if (!this.spawnPointClear(team, def)) continue; // the last unit out hasn't cleared the door yet
       q.shift();
       this.spawnUnit(team, def.id);
     }
@@ -223,17 +292,29 @@ export class World {
 
   private spawnPointClear(team: Team, def: UnitDef): boolean {
     const list = this.alive[team];
-    // Closest ally to our own base is first (player) or last (enemy) in the sorted lane.
-    const nearest = team === 'player' ? list[0] : list[list.length - 1];
-    if (!nearest) return true;
-    const base = this.bases[team];
-    const x = base.x + teamDir(team) * (base.radius + def.radius + 0.5);
-    return Math.abs(nearest.x - x) >= nearest.def.radius + def.radius + GAME.allySpacing;
+    // The rearmost ally (closest to our base) is first (player) or last (enemy) in the sorted lane.
+    const rear = team === 'player' ? list[0] : list[list.length - 1];
+    if (!rear) return true;
+    const gap = (rear.x - this.spawnX(team, def)) * teamDir(team) - rear.def.length;
+    return gap >= GAME.minUnitGap - 1e-6;
   }
 
   // ------------------------------------------------------------------- units
 
+  /** Enemy front unit as seen from `team` (the hostile unit nearest to team's base side). */
+  private enemyFront(team: Team): Unit | undefined {
+    const foes = this.alive[opposite(team)];
+    return team === 'player' ? foes[0] : foes[foes.length - 1];
+  }
+
+  /** Where a team's units stop at the enemy base (its edge) and from which they attack it. */
+  private baseStop(team: Team): number {
+    const b = this.bases[opposite(team)];
+    return b.x - teamDir(team) * b.radius;
+  }
+
   private updateUnits(dt: number): void {
+    // Front units first so the ones behind see this tick's positions.
     const p = this.alive.player;
     for (let i = p.length - 1; i >= 0; i--) this.updateUnit(p[i]!, dt);
     const e = this.alive.enemy;
@@ -241,251 +322,215 @@ export class World {
   }
 
   private updateUnit(unit: Unit, dt: number): void {
-    const ts = this.teams[unit.team];
-    const atk = unit.def.attack;
-    unit.cooldown = Math.max(0, unit.cooldown - dt);
-
-    const range = ts.stat('units', 'range', atk.range);
-    const detect = unit.def.detectionRange + (range - atk.range);
-    const found = this.findTarget(unit, detect);
-    const slot = this.scratch;
-
-    if (found && slot.distance <= range) {
-      unit.state = 'attacking';
-      if (unit.cooldown === 0) {
-        unit.cooldown = ts.stat('units', 'cooldown', atk.cooldown);
-        const dir = teamDir(unit.team);
-        this.launchAttack(
-          unit.team, 'unit', unit.id, atk, ts.stat('units', 'damage', atk.damage),
-          unit.x + dir * unit.def.radius, unit.def.muzzleHeight, unit.z, slot.unit, slot.base?.team ?? null,
-        );
-      }
-      return;
-    }
-
-    // Detected but out of range: close the gap. Otherwise march toward the enemy base.
-    let step = ts.stat('units', 'speed', unit.def.speed) * dt;
-    if (found) {
-      unit.state = 'engaging';
-      step = Math.min(step, slot.distance - range + 1e-4);
-    } else {
-      unit.state = 'advancing';
-    }
-
-    const room = this.roomAhead(unit);
-    if (room < step) {
-      step = Math.max(0, room);
-      if (step === 0) unit.state = 'waiting';
-    }
-    unit.x += teamDir(unit.team) * step;
-  }
-
-  /** Fills `this.scratch` with the nearest hostile ahead within `detect`. */
-  private findTarget(unit: Unit, detect: number): boolean {
-    const s = this.scratch;
-    s.unit = null;
-    s.base = null;
-    s.distance = Infinity;
-
-    const enemies = this.alive[opposite(unit.team)];
-    if (enemies.length > 0) {
-      const dir = teamDir(unit.team);
-      const cand =
-        dir === 1
-          ? enemies[firstIndexAtLeast(enemies, unit.x - unit.def.radius)]
-          : enemies[firstIndexAtLeast(enemies, unit.x + unit.def.radius + 1e-9) - 1];
-      if (cand) {
-        const d = Math.max(0, Math.abs(cand.x - unit.x) - unit.def.radius - cand.def.radius);
-        if (d <= detect) {
-          s.unit = cand;
-          s.distance = d;
-        }
-      }
-    }
-
-    const base = this.bases[opposite(unit.team)];
-    if (!base.destroyed) {
-      const d = Math.max(0, Math.abs(base.x - unit.x) - base.radius - unit.def.radius);
-      if (d <= detect && d < s.distance) {
-        s.unit = null;
-        s.base = base;
-        s.distance = d;
-      }
-    }
-    return s.unit !== null || s.base !== null;
-  }
-
-  /** Free walking distance before bumping into the living ally directly ahead. */
-  private roomAhead(unit: Unit): number {
+    const def = unit.def;
+    const dir = teamDir(unit.team);
     const list = this.alive[unit.team];
-    const stride = unit.team === 'player' ? 1 : -1;
-    let i = unit.laneIndex + stride;
-    let ally = list[i];
-    // Ranged allies stop to shoot; non-ranged units walk past them (lanes have lateral
-    // spread) so a firing line can never wall off the army behind it.
-    if (unit.def.role !== 'ranged') {
-      while (ally && ally.def.role === 'ranged') ally = list[(i += stride)];
+    const ahead = list[unit.laneIndex + dir];
+    const front = this.enemyFront(unit.team);
+
+    // --- movement: single file, no passing
+    let room: number;
+    if (ahead) {
+      room = (ahead.x - unit.x) * dir - ahead.def.length - GAME.minUnitGap;
+    } else if (front) {
+      room = (front.x - unit.x) * dir - GAME.minUnitGap;
+    } else {
+      room = (this.baseStop(unit.team) - unit.x) * dir;
     }
-    if (!ally) return Infinity;
-    const ahead = (ally.x - unit.x) * teamDir(unit.team);
-    return ahead - unit.def.radius - ally.def.radius - GAME.allySpacing;
+    const step = Math.min(this.teams[unit.team].stat('units', 'speed', def.speed) * dt, Math.max(0, room));
+    unit.moving = step > 1e-6;
+    unit.x += dir * step;
+
+    // --- attack flags against the enemy front unit, or the base when none is left
+    const dist = front ? (front.x - unit.x) * dir : (this.baseStop(unit.team) - unit.x) * dir;
+    const melee = dist <= def.melee.range + 1e-6;
+    const rangedReach = front ? dist - GAME.minUnitGap : dist;
+    const ranged = !!def.ranged && rangedReach <= def.ranged.range + 1e-6;
+
+    // --- timers (each routine starts when its flag first holds, like the original coroutines)
+    if (melee && unit.meleeTimer === null) unit.meleeTimer = def.melee.firstHit;
+    else if (!melee && ranged && unit.rangedTimer === null) unit.rangedTimer = 0;
+
+    if (unit.meleeTimer !== null) {
+      unit.meleeTimer -= dt;
+      if (unit.meleeTimer <= 0) {
+        if (melee || ranged) this.unitStrike(unit, 'melee', def.melee.damage);
+        unit.meleeTimer = melee ? unit.meleeTimer + def.melee.interval : null;
+      }
+    }
+    if (unit.rangedTimer !== null && def.ranged) {
+      unit.rangedTimer -= dt;
+      if (unit.rangedTimer <= 0) {
+        if (!melee && ranged) this.unitStrike(unit, 'ranged', def.ranged.damage);
+        unit.rangedTimer = ranged ? unit.rangedTimer + (unit.moving ? def.ranged.intervalWalking : def.ranged.intervalStanding) : null;
+      }
+    }
+
+    unit.state = melee || ranged ? 'attacking' : unit.moving ? 'advancing' : 'waiting';
+  }
+
+  /** A unit's hit lands on the enemy front unit, or the enemy base when none is left. */
+  private unitStrike(unit: Unit, mode: 'melee' | 'ranged', baseDamage: number): void {
+    const ts = this.teams[unit.team];
+    const damage = Math.floor(ts.stat('units', 'damage', baseDamage) * unit.damageMultiplier);
+    this.events.push({ type: 'attack', team: unit.team, sourceKind: 'unit', sourceId: unit.id, mode });
+    const front = this.enemyFront(unit.team);
+    const dir = teamDir(unit.team);
+    if (mode === 'ranged' && unit.def.ranged) {
+      // Instant hit; the stone is cosmetic.
+      const tx = front ? front.centerX(-dir as 1 | -1) : this.baseStop(unit.team);
+      const ty = front ? front.def.height * 0.6 : GAME.baseAimHeight;
+      const tz = front ? front.z : 0;
+      this.launchCosmetic(unit.team, unit.def.ranged.projectileId, unit.x, 1.5, unit.z, tx, ty, tz);
+    }
+    if (front) this.damageUnit(front, damage);
+    else this.damageBase(this.bases[opposite(unit.team)], damage);
   }
 
   // ----------------------------------------------------------------- turrets
 
   private updateTurrets(dt: number): void {
     for (const team of TEAMS) {
+      const base = this.bases[team];
       const ts = this.teams[team];
-      const enemies = this.alive[opposite(team)];
-      for (const turret of this.bases[team].turrets) {
-        turret.cooldown = Math.max(0, turret.cooldown - dt);
-        if (turret.cooldown > 0 || enemies.length === 0) continue;
-
-        const atk = turret.def.attack;
-        const target = nearestInLane(enemies, turret.x);
-        if (!target) continue;
-        const range = ts.stat('turrets', 'range', atk.range);
-        if (Math.abs(target.x - turret.x) - target.def.radius > range) continue;
-
-        turret.cooldown = ts.stat('turrets', 'cooldown', atk.cooldown);
-        this.launchAttack(
-          team, 'turret', turret.index, atk, ts.stat('turrets', 'damage', atk.damage),
-          turret.x, turret.def.muzzleHeight, turret.z, target, null,
-        );
+      const target = this.enemyFront(team);
+      const tdir = teamDir(opposite(team));
+      for (const t of base.turrets) {
+        if (!t) continue;
+        const range = ts.stat('turrets', 'range', t.def.range);
+        let inRange = false;
+        if (target) {
+          const dx = target.centerX(tdir) - t.x;
+          const dy = target.def.height * 0.5 - t.y;
+          inRange = Math.hypot(dx, dy) <= range;
+        }
+        if (inRange && t.timer === null) t.timer = t.def.firstShot;
+        if (t.timer === null) continue;
+        t.timer -= dt;
+        if (t.timer > 0) continue;
+        if (inRange && target) {
+          this.fireTurret(team, t, target);
+          t.timer += ts.stat('turrets', 'cooldown', t.def.interval);
+        } else {
+          t.timer = null;
+        }
       }
     }
   }
 
-  private equipTurrets(team: Team): void {
-    const base = this.bases[team];
-    const def = lookup(this.content.turrets, currentAge(this.content, this.teams[team]).turretId, 'turret');
-    base.turrets = GAME.turretMounts.map(
-      (m, i) => new Turret(i, def, base.x + teamDir(team) * m.forward, m.side),
-    );
+  private fireTurret(team: Team, t: Turret, target: Unit): void {
+    const ts = this.teams[team];
+    const dir = teamDir(team);
+    let dx = target.centerX(teamDir(target.team)) - t.x;
+    const dy = target.def.height * 0.5 - t.y;
+    // Catapult quirk: from the lowest slot it can't aim closer than minAimDistanceSlot0.
+    if (t.def.minAimDistanceSlot0 && t.slot === 0 && dx * dir < t.def.minAimDistanceSlot0) dx = dir * t.def.minAimDistanceSlot0;
+    const len = Math.hypot(dx, dy) || 1;
+    const def = lookup(this.content.projectiles, t.def.projectileId, 'projectile');
+    const p = this.allocProjectile(team, def.id);
+    p.physical = true;
+    p.damage = Math.floor(ts.stat('turrets', 'damage', t.def.damage));
+    p.x = t.x;
+    p.y = t.y;
+    p.z = t.z;
+    p.vx = (dx / len) * def.speed;
+    p.vy = (dy / len) * def.speed;
+    // Lateral drift so the shot meets the target's (cosmetic) z when it reaches it.
+    const time = Math.abs(dx) / Math.max(1e-3, Math.abs(p.vx));
+    p.vz = (target.z - t.z) / Math.max(0.05, time);
+    this.events.push({ type: 'attack', team, sourceKind: 'turret', sourceId: t.slot, mode: 'ranged' });
+    this.events.push({ type: 'projectileFired', projectileId: p.id, defId: def.id, team, x: p.x, y: p.y, z: p.z });
   }
 
-  // ------------------------------------------------------------------ combat
+  // ------------------------------------------------------------- projectiles
 
-  private launchAttack(
-    team: Team,
-    sourceKind: 'unit' | 'turret',
-    sourceId: number,
-    attack: AttackDef,
-    damage: number,
-    ox: number,
-    oy: number,
-    oz: number,
-    targetUnit: Unit | null,
-    targetBase: Team | null,
-  ): void {
-    this.events.push({ type: 'attack', team, sourceKind, sourceId });
-    if (attack.projectileId) {
-      this.launchProjectile(team, attack.projectileId, damage, ox, oy, oz, targetUnit, targetBase);
-    } else if (targetUnit) {
-      this.damageUnit(targetUnit, damage, team);
-    } else if (targetBase) {
-      this.damageBase(this.bases[targetBase], damage);
-    }
-  }
-
-  private launchProjectile(
-    team: Team,
-    defId: string,
-    damage: number,
-    ox: number,
-    oy: number,
-    oz: number,
-    targetUnit: Unit | null,
-    targetBase: Team | null,
-  ): void {
+  private allocProjectile(team: Team, defId: string): Projectile {
     const p = this.projectilePool.pop() ?? new Projectile();
     p.id = this.nextProjectileId++;
     p.def = lookup(this.content.projectiles, defId, 'projectile');
     p.team = team;
-    p.damage = damage;
-    p.x = ox;
-    p.y = oy;
-    p.z = oz;
-    p.startY = oy;
+    p.age = 0;
+    p.damage = 0;
     p.vx = p.vy = p.vz = 0;
-    p.targetUnit = targetUnit;
-    p.targetBase = targetBase;
-    p.lost = false;
-    this.aimAtTarget(p);
-    p.d0 = Math.max(0.001, Math.hypot(p.tx - ox, p.tz - oz));
     this.projectiles.push(p);
-    this.events.push({ type: 'projectileFired', projectileId: p.id, defId, team, x: ox, y: oy, z: oz });
+    return p;
   }
 
-  private aimAtTarget(p: Projectile): void {
-    if (p.targetUnit) {
-      p.tx = p.targetUnit.x;
-      p.ty = p.targetUnit.def.aimHeight;
-      p.tz = p.targetUnit.z;
-    } else if (p.targetBase) {
-      p.tx = this.bases[p.targetBase].x;
-      p.ty = GAME.baseAimHeight;
-      p.tz = 0;
-    }
+  private launchCosmetic(team: Team, defId: string, x: number, y: number, z: number, tx: number, ty: number, tz: number): void {
+    const p = this.allocProjectile(team, defId);
+    p.physical = false;
+    p.sx = p.x = x;
+    p.sy = p.y = y;
+    p.sz = p.z = z;
+    p.tx = tx;
+    p.ty = ty;
+    p.tz = tz;
+    p.flight = Math.max(0.12, Math.hypot(tx - x, tz - z) / p.def.speed);
+    this.events.push({ type: 'projectileFired', projectileId: p.id, defId, team, x, y, z });
   }
 
   private updateProjectiles(dt: number): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
-      if (p.targetUnit) {
-        if (p.targetUnit.alive) this.aimAtTarget(p);
-        else {
-          p.lost = true;
-          p.targetUnit = null;
+      p.age += dt;
+      let done = false;
+      if (p.physical) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        const victim = this.status === 'playing' ? this.unitAt(opposite(p.team), p.x, p.y) : null;
+        if (victim) {
+          this.damageUnit(victim, p.damage);
+          this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
+          done = true;
+        } else if (p.y <= 0 || p.age >= GAME.projectileLifetime || Math.abs(p.x) > GAME.baseOffset + 20) {
+          this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: false, x: p.x, y: Math.max(0, p.y), z: p.z });
+          done = true;
         }
-      } else if (p.targetBase) {
-        this.aimAtTarget(p);
+      } else {
+        const f = Math.min(1, p.age / p.flight);
+        const ox = p.x;
+        const oy = p.y;
+        const oz = p.z;
+        p.x = p.sx + (p.tx - p.sx) * f;
+        p.z = p.sz + (p.tz - p.sz) * f;
+        p.y = p.sy + (p.ty - p.sy) * f + p.def.arcHeight * 4 * f * (1 - f);
+        p.vx = (p.x - ox) / dt;
+        p.vy = (p.y - oy) / dt;
+        p.vz = (p.z - oz) / dt;
+        done = f >= 1;
+        // Damage was applied at launch; the landing is still an impact for effects/audio.
+        if (done) this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
       }
-
-      const dx = p.tx - p.x;
-      const dz = p.tz - p.z;
-      const dist = Math.hypot(dx, dz);
-      const step = p.def.speed * dt;
-
-      if (dist <= step) {
-        this.impactProjectile(p);
+      if (done) {
         this.projectiles[i] = this.projectiles[this.projectiles.length - 1]!;
         this.projectiles.pop();
         this.projectilePool.push(p);
-        continue;
       }
-
-      const oldY = p.y;
-      p.x += (dx / dist) * step;
-      p.z += (dz / dist) * step;
-      const f = Math.min(1, Math.max(0, 1 - (dist - step) / p.d0));
-      p.y = p.startY + (p.ty - p.startY) * f + p.def.arcHeight * 4 * f * (1 - f);
-      p.vx = (dx / dist) * p.def.speed;
-      p.vz = (dz / dist) * p.def.speed;
-      p.vy = (p.y - oldY) / dt;
     }
   }
 
-  private impactProjectile(p: Projectile): void {
-    p.x = p.tx;
-    p.y = p.ty;
-    p.z = p.tz;
-    const hit = !p.lost;
-    this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit, x: p.x, y: p.y, z: p.z });
-    if (!hit) return;
-    if (p.targetUnit) this.damageUnit(p.targetUnit, p.damage, p.team);
-    else if (p.targetBase) this.damageBase(this.bases[p.targetBase], p.damage);
-    p.targetUnit = null;
-    p.targetBase = null;
+  /** The living unit of `team` whose body contains lane point (x, y), front units first. */
+  private unitAt(team: Team, x: number, y: number): Unit | null {
+    const list = this.alive[team];
+    const dir = teamDir(team);
+    for (let k = 0; k < list.length; k++) {
+      const u = list[dir === 1 ? list.length - 1 - k : k]!;
+      if (y < 0 || y > u.def.height) continue;
+      const back = u.x - dir * u.def.length;
+      if (x >= Math.min(u.x, back) - 0.15 && x <= Math.max(u.x, back) + 0.15) return u;
+    }
+    return null;
   }
 
-  private damageUnit(unit: Unit, amount: number, sourceTeam: Team): void {
+  // ------------------------------------------------------------------ damage
+
+  private damageUnit(unit: Unit, amount: number): void {
     if (!unit.alive || unit.health <= 0) return; // already dying this tick
     unit.health -= amount;
-    unit.lastHitBy = sourceTeam;
     this.events.push({
       type: 'hit', targetKind: 'unit', targetId: unit.id, team: unit.team,
-      damage: amount, x: unit.x, y: unit.def.aimHeight, z: unit.z,
+      damage: amount, x: unit.centerX(teamDir(unit.team)), y: unit.def.height * 0.6, z: unit.z,
     });
   }
 
@@ -501,7 +546,15 @@ export class World {
 
   // ----------------------------------------------------------------- upkeep
 
-  /** Resolve deaths after all attacks this tick so trades are symmetric. */
+  /** Gold the opposing team receives when a unit of this type dies. */
+  killReward(def: UnitDef): number {
+    return Math.round(GAME.economy.killRewardMultiplier * def.cost);
+  }
+
+  /**
+   * Resolve deaths after all attacks this tick so trades are symmetric. Like the original, the
+   * opposing team is paid for every death (whoever dealt the blow) and the owner gets a little XP.
+   */
   private resolveDeaths(): void {
     for (const team of TEAMS) {
       const list = this.alive[team];
@@ -516,12 +569,12 @@ export class World {
         removed = true;
         u.health = 0;
         u.state = 'dead';
-        if (u.lastHitBy) {
-          const killer = this.teams[u.lastHitBy];
-          killer.gold += u.def.goldReward;
-          killer.xp += u.def.xpReward;
-        }
-        this.events.push({ type: 'death', unitId: u.id, team: u.team, killerTeam: u.lastHitBy });
+        const reward = this.killReward(u.def);
+        const killer = this.teams[opposite(team)];
+        killer.gold += reward;
+        killer.xp += reward * GAME.economy.killXpMultiplier;
+        this.teams[team].xp += Math.floor(reward * GAME.economy.ownLossXpMultiplier);
+        this.events.push({ type: 'death', unitId: u.id, team: u.team, killerTeam: opposite(team) });
       }
       list.length = w;
       if (removed) this.sortLane(team);
@@ -576,26 +629,4 @@ export class World {
       this.events.push({ type: 'defeat' });
     }
   }
-}
-
-/** First index whose unit x is >= v (list sorted ascending by x). */
-function firstIndexAtLeast(list: readonly Unit[], v: number): number {
-  let lo = 0;
-  let hi = list.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (list[mid]!.x < v) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-/** Unit whose x is closest to `x` in a lane-sorted list. */
-function nearestInLane(list: readonly Unit[], x: number): Unit | undefined {
-  const i = firstIndexAtLeast(list, x);
-  const a = list[i - 1];
-  const b = list[i];
-  if (!a) return b;
-  if (!b) return a;
-  return x - a.x <= b.x - x ? a : b;
 }

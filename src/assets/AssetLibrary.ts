@@ -39,6 +39,7 @@ export class AssetLibrary {
   private readonly loaded = new Map<string, LoadedModel>();
   private readonly teamMaterials = new Map<string, Material>();
   private readonly loader = new GLTFLoader();
+  private readonly byUrl = new Map<string, Promise<LoadedGltf>>();
 
   register(key: string, spec: AssetSpec): void {
     this.specs.set(key, spec);
@@ -54,7 +55,10 @@ export class AssetLibrary {
   /** Load one GLB and make it the model for `key`. Returns contract warnings ([] = clean). */
   async loadModel(key: string, url: string): Promise<string[]> {
     try {
-      return this.registerLoaded(key, await this.loader.loadAsync(url));
+      // Keys may share a GLB (e.g. two units dressed differently): fetch/parse each URL once.
+      let p = this.byUrl.get(url);
+      if (!p) this.byUrl.set(url, (p = this.loader.loadAsync(url)));
+      return this.registerLoaded(key, await p);
     } catch (err) {
       console.warn(`[assets] "${key}" failed to load from ${url}; using placeholder`, err);
       return [`failed to load ${url}`];

@@ -1,18 +1,33 @@
 /**
  * Shapes of all gameplay content. Content files (units.ts, ages.ts, ...) are plain data
  * that satisfy these types; the simulation never hardcodes an individual unit or age.
+ *
+ * Combat follows the original game (docs/AGE1_SPEC.md): one lane, every unit fights the enemy
+ * team's front unit, melee and ranged attacks run on separate timers, turrets fire physical
+ * projectiles that hit the first enemy they touch.
  */
 
 export type Role = 'melee' | 'ranged' | 'tank';
 
-export interface AttackDef {
+export interface MeleeAttack {
   damage: number;
-  /** Edge-to-edge reach along the lane. */
+  /** Max front-to-front distance (m) to the enemy front unit (or the base edge). */
   range: number;
-  /** Seconds between attacks. */
-  cooldown: number;
-  /** When set the attack fires this projectile; otherwise damage is instant (melee). */
-  projectileId?: string;
+  /** Seconds from coming into range to the first hit. */
+  firstHit: number;
+  /** Seconds between later hits. */
+  interval: number;
+}
+
+export interface RangedAttack {
+  damage: number;
+  /** Max distance (m) measured as front-to-front gap minus GAME.minUnitGap. */
+  range: number;
+  /** Seconds between shots while standing / while still walking. */
+  intervalStanding: number;
+  intervalWalking: number;
+  /** Cosmetic projectile shown flying to the target (the hit itself is instant). */
+  projectileId: string;
 }
 
 export interface UnitDef {
@@ -27,43 +42,45 @@ export interface UnitDef {
   maxHealth: number;
   /** Metres per second. */
   speed: number;
-  /** Body radius along the lane. */
-  radius: number;
-  /** Edge-to-edge distance at which the unit notices enemies and moves to engage. */
-  detectionRange: number;
-  attack: AttackDef;
-  /** Heights (m) for projectile spawn / projectile aim point. */
-  muzzleHeight: number;
-  aimHeight: number;
-  /** Granted to the team that lands the killing blow. */
-  goldReward: number;
-  xpReward: number;
+  /**
+   * Body length (m) along the lane. A unit's x is its front; the body extends this far behind
+   * it, and allies queue behind the body.
+   */
+  length: number;
+  /** Height (m) of the body, for projectile collisions and aim points. */
+  height: number;
+  melee: MeleeAttack;
+  ranged?: RangedAttack;
 }
 
 export interface ProjectileDef {
   id: string;
   /** Metres per second. */
   speed: number;
-  /** Peak height (m) of the parabolic arc; 0 flies straight. */
-  arcHeight: number;
-  /** Placeholder visual size (m) and colour. */
+  /** Visual size (m). */
   size: number;
   color: number;
+  /** Peak height (m) of the cosmetic arc for instant-hit unit shots. */
+  arcHeight: number;
+  /** Mesh family the renderer uses. */
+  shape: 'stone' | 'egg' | 'boulder';
 }
 
 export interface TurretDef {
   id: string;
   name: string;
   modelKey: string;
-  muzzleHeight: number;
-  /** Turrets must use a projectile attack. */
-  attack: AttackDef;
-}
-
-export interface AgeUnlock {
-  unitId: string;
-  /** Total XP the team needs before this unit can be trained. */
-  unlockXp: number;
+  cost: number;
+  damage: number;
+  /** Euclidean reach (m) from the turret on its slot to the enemy front unit. */
+  range: number;
+  /** Seconds from a target entering range to the first shot. */
+  firstShot: number;
+  /** Seconds between later shots. */
+  interval: number;
+  projectileId: string;
+  /** Catapult quirk: in the lowest slot it cannot aim closer than this (m). */
+  minAimDistanceSlot0?: number;
 }
 
 export interface AgeDef {
@@ -71,10 +88,13 @@ export interface AgeDef {
   name: string;
   /** Total XP needed to enter this age (0 for the first). */
   xpRequired: number;
-  /** Turret mounted on every base turret mount while in this age. */
-  turretId: string;
-  units: AgeUnlock[];
-  /** Upgrade ids purchasable during (and after) this age. */
+  /** Base HP in this age (current HP rises by the difference on evolving). */
+  baseHealth: number;
+  /** Trainable units in tier order (all available from the start of the age). */
+  units: string[];
+  /** Buildable turrets in tier order. */
+  turrets: string[];
+  /** Upgrade ids purchasable during (and after) this age (the original has none). */
   upgrades: string[];
 }
 
@@ -99,28 +119,24 @@ export interface UpgradeDef {
   requires?: string[];
 }
 
+export type AiTurretAction = { at: number; action: 'build'; turretId: string; slot: number } | { at: number; action: 'sell'; slot: number };
+
+/**
+ * The original enemy behaviour (docs/AGE1_SPEC.md, section 10). It does not spend gold.
+ */
 export interface AiProfile {
   id: string;
-  /** Seconds between decisions. */
-  thinkInterval: number;
-  /** Enemy economy scaling relative to the player's. */
-  incomeMultiplier: number;
-  startGold: number;
-  /** Max items the AI keeps in its production queue. */
-  maxQueue: number;
-  /** Gold held back from unit purchases when not under pressure. */
-  goldReserve: number;
-  /** Player front within this distance (m) of the AI base counts as a threat. */
-  threatDistance: number;
-  /** Army-strength ratio (mine/theirs) above which the AI feels it is winning. */
-  aggressionRatio: number;
-  /** Desired share of each role in the army. */
-  roleMix: Record<Role, number>;
-  /** Weight of situational preferences (fast units when threatened, strong when winning). */
-  reactivity: number;
-  /** Random tie-breaking noise added to unit scores. */
-  randomness: number;
-  buyUpgrades: boolean;
+  /** Enemy unit HP and damage multiplier for this difficulty. */
+  statMultiplier: number;
+  /** Seconds between spawn rolls, and the chance per roll. */
+  rollInterval: number;
+  spawnChance: number;
+  /** No new units while this many are on the field. */
+  maxUnits: number;
+  /** Seconds into the age when each unit tier becomes available (tier 0 at 0). */
+  tierUnlock: number[];
+  /** Scripted turret builds/sales, seconds into the age. */
+  turretScript: AiTurretAction[];
   seed: number;
 }
 

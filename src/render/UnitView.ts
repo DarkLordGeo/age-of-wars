@@ -53,7 +53,7 @@ export class UnitView {
     // Models are authored facing +X; mirror for the team marching toward -X.
     this.model.rotation.set(0, teamDir(unit.team) === 1 ? 0 : Math.PI, 0);
     this.model.position.set(0, 0, 0);
-    this.bar.position.y = unit.def.aimHeight + 1.1;
+    this.bar.position.y = unit.def.height + 0.6;
     this.lunge = 0;
     this.root.visible = true;
     this.animator?.reset();
@@ -69,13 +69,13 @@ export class UnitView {
   update(dt: number, camera: Camera | null): void {
     const u = this.unit;
     const dir = teamDir(u.team);
-    this.root.position.set(u.x, 0, u.z);
+    this.root.position.set(u.centerX(dir), 0, u.z);
     this.phase += dt * 9;
 
     if (this.animator) {
       this.animator.update(dt);
       if (u.state === 'dead') this.animator.playOnce('death');
-      else if (u.state === 'advancing' || u.state === 'engaging') this.animator.playLoop('walk');
+      else if (u.moving) this.animator.playLoop('walk');
       else this.animator.playLoop('idle');
     } else {
       this.animateProcedurally(dt, dir);
@@ -106,7 +106,8 @@ export class UnitView {
       m.position.y = -0.1 * t;
       return;
     }
-    if (u.state === 'advancing' || u.state === 'engaging') {
+    m.userData.animate?.(this.phase, u.moving);
+    if (u.moving && !m.userData.animate) {
       m.position.y = Math.abs(Math.sin(this.phase)) * 0.12;
       m.rotation.z = Math.sin(this.phase) * 0.04;
     }

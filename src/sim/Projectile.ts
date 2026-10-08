@@ -1,33 +1,34 @@
 import type { ProjectileDef } from '../config/schema';
-import type { Unit } from './Unit';
 import type { Team } from './types';
 
 /**
- * In-flight projectile. Homes on its target's position each tick; if a unit target dies in
- * flight it flies on to the last known point and lands as a miss. Instances are pooled by
- * World, so fields are reset in `World.launchProjectile`.
+ * In-flight projectile, pooled by World (fields reset in World).
+ * - Turret projectiles (`physical`) fly in a straight line and hit the first enemy unit whose
+ *   body they touch; they never hit bases, and vanish after GAME.projectileLifetime.
+ * - Cosmetic projectiles (the Slingshot Man's stone, whose damage is instant) arc from the
+ *   shooter to a fixed point and simply land.
  */
 export class Projectile {
   id = 0;
   def!: ProjectileDef;
   team: Team = 'player';
+  physical = true;
   damage = 0;
   x = 0;
   y = 0;
   z = 0;
-  /** Velocity (m/s), exposed so renderers can orient the projectile. */
+  /** Velocity (m/s), also used by renderers to orient the projectile. */
   vx = 0;
   vy = 0;
   vz = 0;
-  startY = 0;
-  /** Horizontal distance to the target at launch (for arc progress). */
-  d0 = 1;
-  /** Last known aim point. */
+  age = 0;
+  // cosmetic flight
+  sx = 0;
+  sy = 0;
+  sz = 0;
   tx = 0;
   ty = 0;
   tz = 0;
-  targetUnit: Unit | null = null;
-  targetBase: Team | null = null;
-  /** True once the original target is gone. */
-  lost = false;
+  /** Seconds the cosmetic flight takes. */
+  flight = 1;
 }

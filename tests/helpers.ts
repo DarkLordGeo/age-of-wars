@@ -1,8 +1,6 @@
-import { AGES } from '../src/config/ages';
 import { CONTENT } from '../src/config/content';
 import { GAME } from '../src/config/game';
 import type { Content } from '../src/config/schema';
-import { TURRETS } from '../src/config/turrets';
 import { UNITS } from '../src/config/units';
 import type { SimEvent, SimEventType } from '../src/sim/types';
 import { World, type WorldOptions } from '../src/sim/World';
@@ -45,28 +43,6 @@ export function runUntil(w: World, pred: () => boolean, maxSeconds: number, log?
     w.drainEvents(log ? log.sink : () => undefined);
   }
   return pred() ? w.time - start : -1;
-}
-
-/** Default content plus a second age and a stronger turret, for progression tests. */
-export function twoAgeContent(): Content {
-  return {
-    ...CONTENT,
-    turrets: {
-      ...TURRETS,
-      heavy: { ...TURRETS.watchtower!, id: 'heavy', attack: { ...TURRETS.watchtower!.attack, damage: 50 } },
-    },
-    ages: [
-      ...AGES,
-      { id: 'second', name: 'Second Age', xpRequired: 100, turretId: 'heavy', units: [], upgrades: ['extra'] },
-    ],
-    upgrades: {
-      ...CONTENT.upgrades,
-      extra: {
-        id: 'extra', name: 'Extra', description: '', cost: 10,
-        effects: [], requires: ['sharpened_weapons'],
-      },
-    },
-  };
 }
 
 export function contentWithUnit(id: string, patch: Partial<(typeof UNITS)[string]>): Content {

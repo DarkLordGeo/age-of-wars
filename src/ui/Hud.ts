@@ -1,13 +1,15 @@
 import { GAME } from '../config/game';
 import type { Content } from '../config/schema';
-import { currentAge, nextAge, unitUnlockXp } from '../sim/progression';
+import { currentAge } from '../sim/progression';
 import type { World } from '../sim/World';
-import { icon, ICONS } from './icons';
+import { ICONS } from './icons';
 
 export interface HudHandlers {
   onEnqueue: (unitId: string) => void;
   onCancel: (queueIndex: number) => void;
-  onUpgrade: (upgradeId: string) => void;
+  onBuildTurret: (turretId: string) => void;
+  onSellTurret: (slot: number) => void;
+  onBuySlot: () => void;
   onAdvanceAge: () => void;
   onRestart: () => void;
   onMainMenu: () => void;
@@ -15,7 +17,8 @@ export interface HudHandlers {
   onPause: () => void;
 }
 
-type Row = 'main' | 'units' | 'upgrades';
+type Row = 'main' | 'units' | 'turrets' | 'sell';
+const ROW_TITLE: Record<Row, string> = { main: 'Menu', units: 'Units', turrets: 'Turrets', sell: 'Sell turret' };
 
 const REFRESH_HZ = 15;
 
@@ -35,12 +38,15 @@ const setText = (el: HTMLElement, s: string): void => {
 export class Hud {
   private readonly q: <T extends HTMLElement>(id: string) => T;
   private readonly unitBtns = new Map<string, HTMLButtonElement>();
-  private readonly upgradeBtns = new Map<string, HTMLButtonElement>();
+  private readonly turretBtns = new Map<string, HTMLButtonElement>();
+  private readonly sellBtns: HTMLButtonElement[] = [];
   private readonly slots: HTMLElement[] = [];
   private readonly unitOrder: string[];
-  private readonly upgradeOrder: string[];
+  private readonly turretOrder: string[];
   private portraits: Record<string, string> = {};
   private sinceRefresh = 1;
+  /** Last world seen by update(), for tooltips. */
+  private world0: World | null = null;
   private toastTimer = 0;
   /** False while a menu is open: the HUD is hidden and ignores hotkeys. */
   private active = true;
@@ -51,7 +57,7 @@ export class Hud {
     handlers: HudHandlers,
   ) {
     this.unitOrder = Object.keys(content.units);
-    this.upgradeOrder = content.ages.flatMap((a) => a.upgrades);
+    this.turretOrder = Object.keys(content.turrets);
     root.innerHTML = `
       <div class="plank purse">
         <div class="gold"><i class="coin"></i><span data-id="gold"></span></div>
@@ -66,12 +72,15 @@ export class Hud {
         <div class="menu-title" data-id="menutitle">Menu</div>
         <div class="menu-row" data-id="row-main">
           <button class="ibtn" data-id="cat-units">${ICONS.units}</button>
-          <button class="ibtn" data-id="cat-upgrades">${ICONS.upgrades}</button>
+          <button class="ibtn" data-id="cat-turrets">${ICONS.turret}</button>
+          <button class="ibtn" data-id="cat-sell">${ICONS.sell}</button>
+          <button class="ibtn" data-id="slot">${ICONS.slot}</button>
           <button class="ibtn" data-id="evolve">${ICONS.evolve}</button>
           <button class="ibtn" data-id="pause">${ICONS.pause}</button>
         </div>
         <div class="menu-row" data-id="row-units" hidden></div>
-        <div class="menu-row" data-id="row-upgrades" hidden></div>
+        <div class="menu-row" data-id="row-turrets" hidden></div>
+        <div class="menu-row" data-id="row-sell" hidden></div>
         <div class="tip" data-id="tip"></div>
       </div>
       <div class="hpbar player"><div class="fill" data-id="pf"></div><span data-id="pt"></span></div>
@@ -95,11 +104,16 @@ export class Hud {
 
     // Category row
     this.q('cat-units').addEventListener('click', () => this.showRow('units'));
-    this.q('cat-upgrades').addEventListener('click', () => this.showRow('upgrades'));
+    this.q('cat-turrets').addEventListener('click', () => this.showRow('turrets'));
+    this.q('cat-sell').addEventListener('click', () => this.showRow('sell'));
+    this.q('slot').addEventListener('click', () => handlers.onBuySlot());
     this.q('evolve').addEventListener('click', () => handlers.onAdvanceAge());
     this.q('pause').addEventListener('click', () => handlers.onPause());
     tip(this.q('cat-units'), () => 'Train units');
-    tip(this.q('cat-upgrades'), () => 'Upgrades');
+    tip(this.q('cat-turrets'), () => 'Build turrets');
+    tip(this.q('cat-sell'), () => 'Sell a turret (50% refund)');
+    tip(this.q('slot'), () => this.slotTip());
+    tip(this.q('evolve'), () => this.evolveTip());
     tip(this.q('pause'), () => 'Menu (Esc)');
 
     // Units row
@@ -116,18 +130,33 @@ export class Hud {
     });
     unitsRow.appendChild(this.backButton(tip));
 
-    // Upgrades row
-    const upRow = this.q('row-upgrades');
-    for (const id of this.upgradeOrder) {
+    // Turrets row (builds into the first free slot)
+    const turRow = this.q('row-turrets');
+    for (const id of this.turretOrder) {
+      const def = content.turrets[id]!;
       const btn = document.createElement('button');
       btn.className = 'ibtn upgrade';
-      btn.innerHTML = `${icon(id)}<span class="owned">✓</span>`;
-      btn.addEventListener('click', () => handlers.onUpgrade(id));
-      tip(btn, () => this.upgradeTip(id));
-      upRow.appendChild(btn);
-      this.upgradeBtns.set(id, btn);
+      btn.innerHTML = `${ICONS.turret}<span class="hk">${def.name.split(' ').map((w) => w[0]).join('')}</span>`;
+      btn.addEventListener('click', () => handlers.onBuildTurret(id));
+      tip(btn, () => `${def.name} - ${def.cost} gold`);
+      turRow.appendChild(btn);
+      this.turretBtns.set(id, btn);
     }
-    upRow.appendChild(this.backButton(tip));
+    turRow.appendChild(this.backButton(tip));
+
+    // Sell row: one button per slot
+    const sellRow = this.q('row-sell');
+    for (let s = 0; s < GAME.slotCosts.length + 1; s++) {
+      const btn = document.createElement('button');
+      btn.className = 'ibtn upgrade';
+      btn.innerHTML = `${ICONS.sell}<span class="hk">${s + 1}</span>`;
+      btn.addEventListener('click', () => handlers.onSellTurret(s));
+      tip(btn, () => this.sellTip(s));
+      sellRow.appendChild(btn);
+      this.sellBtns.push(btn);
+    }
+    sellRow.appendChild(this.backButton(tip));
+    this.world0 = null;
 
     // Training queue squares
     const queueEl = this.q('queue');
@@ -164,8 +193,9 @@ export class Hud {
   private showRow(row: Row): void {
     this.q('row-main').hidden = row !== 'main';
     this.q('row-units').hidden = row !== 'units';
-    this.q('row-upgrades').hidden = row !== 'upgrades';
-    setText(this.q('menutitle'), row === 'units' ? 'Units' : row === 'upgrades' ? 'Upgrades' : 'Menu');
+    this.q('row-turrets').hidden = row !== 'turrets';
+    this.q('row-sell').hidden = row !== 'sell';
+    setText(this.q('menutitle'), ROW_TITLE[row]);
     setText(this.q('tip'), '');
     this.sinceRefresh = 1;
   }
@@ -175,9 +205,20 @@ export class Hud {
     return `${def.name} - ${def.cost} gold, ${def.spawnTime}s`;
   }
 
-  private upgradeTip(id: string): string {
-    const up = this.content.upgrades[id]!;
-    return `${up.name} - ${up.cost} gold: ${up.description}`;
+  private slotTip(): string {
+    const cost = this.world0?.nextSlotCost('player');
+    return cost == null ? 'All turret slots bought' : `Add turret slot - ${cost} gold`;
+  }
+
+  private evolveTip(): string {
+    const need = this.world0?.xpToEvolve('player');
+    return need == null ? 'Final age reached' : `Evolve (${need} XP)`;
+  }
+
+  private sellTip(slot: number): string {
+    const t = this.world0?.bases.player.turrets[slot];
+    if (!t) return `Slot ${slot + 1}: empty`;
+    return `Sell ${t.def.name} - +${Math.floor(t.def.cost * GAME.turretSellRefund)} gold`;
   }
 
   /** Show/hide the HUD (hidden while the main or pause menu is open). */
@@ -212,16 +253,17 @@ export class Hud {
     if (this.sinceRefresh < 1 / REFRESH_HZ) return;
     this.sinceRefresh = 0;
 
+    this.world0 = world;
     const c = this.content;
     const me = world.teams.player;
     const { player, enemy } = world.bases;
     const playing = world.status === 'playing';
 
     // Purse
-    const next = nextAge(c, me);
+    const need = world.xpToEvolve('player');
     setText(this.q('gold'), String(Math.floor(me.gold)));
     setText(this.q('xp'), String(Math.floor(me.xp)));
-    setText(this.q('xpnext'), next ? ` / ${next.xpRequired}` : '');
+    setText(this.q('xpnext'), need != null ? ` / ${need}` : '');
     setText(this.q('age'), currentAge(c, me).name);
 
     // Base health (vertical bars)
@@ -247,7 +289,6 @@ export class Hud {
     // Menu buttons
     const evolve = this.q<HTMLButtonElement>('evolve');
     evolve.disabled = !world.canAdvanceAge('player');
-    evolve.title = next ? `Evolve to ${next.name} (${next.xpRequired} XP)` : 'Final age reached';
 
     for (const [id, btn] of this.unitBtns) {
       const def = c.units[id]!;
@@ -255,14 +296,20 @@ export class Hud {
       btn.classList.toggle('locked', !unlocked);
       btn.classList.toggle('poor', unlocked && me.gold < def.cost);
       btn.disabled = !playing || !unlocked || me.gold < def.cost || me.queue.length >= GAME.economy.queueSize;
-      btn.title = unlocked ? '' : `${def.name}: unlocks at ${unitUnlockXp(c, me, id) ?? '?'} XP`;
     }
-    for (const [id, btn] of this.upgradeBtns) {
-      const up = c.upgrades[id]!;
-      const owned = me.upgrades.has(id);
-      btn.classList.toggle('owned', owned);
-      btn.disabled = !playing || owned || me.gold < up.cost;
+    const base = world.bases.player;
+    const freeSlot = base.turrets.slice(0, base.slots).some((t) => !t);
+    for (const [id, btn] of this.turretBtns) {
+      const def = c.turrets[id]!;
+      btn.classList.toggle('poor', me.gold < def.cost);
+      btn.disabled = !playing || !freeSlot || me.gold < def.cost;
     }
+    this.sellBtns.forEach((btn, s) => {
+      btn.hidden = s >= base.slots;
+      btn.disabled = !playing || !base.turrets[s];
+    });
+    const slotCost = world.nextSlotCost('player');
+    this.q<HTMLButtonElement>('slot').disabled = !playing || slotCost == null || me.gold < slotCost;
 
     const overlay = this.q('overlay');
     overlay.classList.toggle('show', !playing);

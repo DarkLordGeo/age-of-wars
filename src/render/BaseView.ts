@@ -2,6 +2,8 @@ import { Group, type Object3D } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { Base } from '../sim/Base';
 import { teamDir } from '../sim/types';
+import { GAME } from '../config/game';
+import { createSlotTower, TURRET_MUZZLE } from './age1/turrets';
 
 const RECOIL_TIME = 0.18;
 /** How long the turret's nocked arrow stays hidden after a shot (visual reload). */
@@ -26,7 +28,9 @@ type Ticking = Object3D & { userData: { tick?: (dt: number) => void } };
  */
 export class BaseView {
   readonly root = new Group();
-  private readonly turretModels: TurretModel[] = [];
+  private readonly turretModels: Array<TurretModel | undefined> = [];
+  private tower: Object3D | null = null;
+  private towerSlots = 0;
   private readonly model: Ticking;
 
   constructor(
@@ -57,17 +61,33 @@ export class BaseView {
 
   update(dt: number): void {
     this.model.userData.tick?.(dt);
+    const base = this.base;
+    const dir = teamDir(base.team);
+    const towerX = dir * GAME.turretTower.forward;
+    const towerZ = GAME.turretTower.side;
 
-    // (Re)build turret models when the sim's turret set changes, e.g. on age advance.
-    const turrets = this.base.turrets;
+    // Slot tower: rebuilt when a slot is bought.
+    if (this.towerSlots !== base.slots) {
+      if (this.tower) this.root.remove(this.tower);
+      this.tower = createSlotTower(this.tint, base.slots);
+      this.tower.position.set(towerX, 0, towerZ);
+      if (dir === -1) this.tower.scale.x = -1;
+      this.root.add(this.tower);
+      this.towerSlots = base.slots;
+    }
+
+    // Turret models follow the sim's slots (null = empty).
+    const turrets = base.turrets;
     for (let i = 0; i < turrets.length; i++) {
-      const t = turrets[i]!;
+      const t = turrets[i];
       const have = this.turretModels[i];
-      if (have?.key === t.def.modelKey) continue;
+      if (have && have.key === t?.def.modelKey) continue;
       if (have) this.root.remove(have.obj);
+      this.turretModels[i] = undefined;
+      if (!t) continue;
       const obj = this.assets.instantiate(t.def.modelKey, this.tint);
-      obj.position.set(t.x - this.base.x, 0, t.z);
-      obj.rotation.y = teamDir(this.base.team) === 1 ? 0 : Math.PI;
+      obj.position.set(t.x - base.x, t.y - TURRET_MUZZLE, t.z);
+      obj.rotation.y = dir === 1 ? 0 : Math.PI;
       this.root.add(obj);
       const weapon = obj.getObjectByName('Weapon') ?? obj;
       this.turretModels[i] = {
@@ -81,21 +101,14 @@ export class BaseView {
       };
     }
 
-    for (let i = 0; i < this.turretModels.length; i++) {
-      const t = this.turretModels[i]!;
+    for (const t of this.turretModels) {
+      if (!t) continue;
       t.recoil = Math.max(0, t.recoil - dt);
       if (t.reload > 0) {
         t.reload = Math.max(0, t.reload - dt);
         if (t.reload === 0 && t.nocked) t.nocked.visible = true;
       }
-      const kick = Math.sin((t.recoil / RECOIL_TIME) * Math.PI) * 0.3;
-      if (t.weapon === t.obj) {
-        // Whole-model kick, in base space (toward our own side).
-        t.obj.position.x = turrets[i]!.x - this.base.x - teamDir(this.base.team) * kick;
-      } else {
-        // Weapon kick in the turret's local space (the model is already turned to face the enemy).
-        t.weapon.position.x = t.weaponRestX - kick;
-      }
+      t.weapon.position.x = t.weaponRestX - Math.sin((t.recoil / RECOIL_TIME) * Math.PI) * 0.3;
       t.obj.userData.tick?.(dt);
     }
   }

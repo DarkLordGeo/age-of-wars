@@ -1,6 +1,6 @@
 /**
  * Battlefield camera (Age 1). A fixed shot "standing" just in front of and to the side of the
- * player's camp: slightly elevated (27 m), looking down ~16° and diagonally across the lane toward the
+ * player's camp: slightly elevated (20 m), looking down ~16° and diagonally across the lane toward the
  * enemy camp. The player's camp and watchtower are the near-side anchor, the enemy camp sits in
  * the distance. No player rotation, orbit, pan or zoom.
  *
@@ -9,9 +9,9 @@
  */
 export const CAMERA = {
   /** Fixed eye position. */
-  position: { x: -86, y: 27, z: 38 },
+  position: { x: -66, y: 20, z: 31 },
   /** Default look-at point (mid-lane, a little toward the enemy). */
-  target: { x: -10, y: 1.5, z: -4 },
+  target: { x: -16, y: 2, z: -2 },
   /** Vertical FOV at 16:9; narrower screens widen it so the horizontal framing holds. */
   fov: 40,
   minHorizontalFov: 66,

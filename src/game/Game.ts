@@ -69,8 +69,16 @@ export class Game {
         if (msg) this.hud.toast(msg);
       },
       onCancel: (i) => this.world.cancelQueued('player', i),
-      onUpgrade: (id) => {
-        if (this.world.purchaseUpgrade('player', id) === 'unaffordable') this.hud.toast('Not enough gold');
+      onBuildTurret: (id) => {
+        const r = this.world.buildTurret('player', id);
+        if (r === 'unaffordable') this.hud.toast('Not enough gold');
+        else if (r === 'no-free-slot') this.hud.toast('No free turret slot');
+      },
+      onSellTurret: (slot) => this.world.sellTurret('player', slot),
+      onBuySlot: () => {
+        const r = this.world.buySlot('player');
+        if (r === 'unaffordable') this.hud.toast('Not enough gold');
+        else if (r === 'max-slots') this.hud.toast('All slots bought');
       },
       onAdvanceAge: () => this.world.advanceAge('player'),
       onRestart: () => this.startMatch(this.difficulty),
