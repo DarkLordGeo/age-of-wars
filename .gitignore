@@ -28,3 +28,6 @@ __pycache__/
 # Test / tooling output
 coverage/
 test-results/
+
+# Raw Rodin exports (~10 MB each) stay local; baked copies go to public/models
+assets_src/rodin/v2/*.glb
