@@ -4,9 +4,16 @@ import type { ClipName } from '../assets/contract';
 const FADE = 0.12;
 
 /**
+ * One-shots only interrupt one-shots of equal or lower priority: a flinch never cuts a swing
+ * short, and nothing interrupts a death.
+ */
+const PRIORITY: Partial<Record<ClipName, number>> = { hit: 1, attack: 2, death: 3 };
+
+/**
  * Per-instance animation state for one cloned GLB: its own mixer and actions, so pooled
  * units never share playback state. Looping clips (idle/walk) crossfade; one-shots
- * (attack, death) hold the model until finished. Death clamps on its last frame.
+ * (hit, attack, death) hold the model until finished. Death clamps on its last frame.
+ * Purely visual: gameplay timing comes from the sim, never from clip events.
  */
 export class ModelAnimator {
   private readonly mixer: AnimationMixer;
@@ -37,9 +44,13 @@ export class ModelAnimator {
     this.start(name, false);
   }
 
-  /** Play `name` once, interrupting whatever is running. Death stays on its final pose. */
+  /**
+   * Play `name` once, interrupting loops and lower-priority one-shots (see PRIORITY).
+   * Death stays on its final pose.
+   */
   playOnce(name: ClipName): void {
     if (this.current === name && this.busy) return;
+    if (this.busy && this.current && (PRIORITY[this.current] ?? 0) > (PRIORITY[name] ?? 0)) return;
     this.start(name, true);
   }
 

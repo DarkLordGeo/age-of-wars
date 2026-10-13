@@ -56,7 +56,10 @@ export class GameRenderer {
       if (e.sourceKind === 'unit') this.views.get(e.sourceId)?.triggerAttack();
       else this.baseViews[e.team]?.triggerRecoil(e.sourceId);
     });
-    // No hit/death effects yet (removed on request); the camp itself stays still on hits.
+    bus.on('hit', (e) => {
+      if (e.targetKind === 'unit') this.views.get(e.targetId)?.triggerHit();
+    });
+    // No hit/death particle effects yet (removed on request); the camp itself stays still on hits.
 
     window.addEventListener('resize', () => this.resize());
     this.resize();

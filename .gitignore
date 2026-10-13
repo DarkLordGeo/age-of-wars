@@ -31,3 +31,6 @@ test-results/
 
 # Raw Rodin exports (~10 MB each) stay local; processed copies go to public/models
 assets_src/rodin/raw/**/*.glb
+
+# Mixamo uploads and downloads (raw FBX) stay local; only processed GLBs are committed
+assets_src/rodin/mixamo/**/*.fbx

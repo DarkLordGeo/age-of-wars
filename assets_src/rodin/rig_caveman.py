@@ -7,7 +7,7 @@ model g: seated pose, spear). Everything here is original work: the skeleton, th
 (Blender automatic weights with a nearest-bone fallback), the props and the keyframed clips.
 
 Output contract (docs/ASSET_SPEC.md): metres, +Y up, facing +X, feet at y=0, <=20k tris,
-clips idle/walk/attack/death (rider: idle/attack/death; it is carried by the dinosaur),
+clips idle/walk/attack/death + optional hit (rider: idle/attack/death; it is carried by the dinosaur),
 one `TeamColor` material (the belt), textures 1024 px.
 """
 import bpy, bmesh, math, sys
@@ -469,10 +469,18 @@ if VARIANT == 'club':
         hips = pivot + rot @ (hips - pivot)
         apply_pose(p, body_rot=rot, hips=hips)
 
+    def hit(t):
+        # Short flinch: rock back from the blow and recover (optional `hit` clip, 0.4 s).
+        k = math.sin(math.pi * t)
+        p = legs_stand() | spine(lerp(0.04, -0.28, k)) | blendp(
+            CARRY, CARRY | {'UpperArm.L': V(0.45, -0.45, -0.55), 'ForeArm.L': V(0.2, -0.85, 0.25)}, k)
+        apply_pose(p, hips=HIPS0 + V(0, 0.06 * k, -0.025 * k))
+
     bake('idle', 60, idle)
     bake('walk', 18, walk)
     bake('attack', 21, attack, loop=False)
     bake('death', 36, death, loop=False)
+    bake('hit', 12, hit, loop=False)
 
 # ------------------------------------------------------------------ clips (rider)
 else:

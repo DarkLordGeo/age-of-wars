@@ -67,6 +67,11 @@ export class UnitView {
     else this.lunge = LUNGE_TIME;
   }
 
+  /** Flinch when struck (models with a `hit` clip only; never interrupts a swing or a death). */
+  triggerHit(): void {
+    if (this.unit.state !== 'dead') this.animator?.playOnce('hit');
+  }
+
   update(dt: number, camera: Camera | null): void {
     const u = this.unit;
     const dir = teamDir(u.team);

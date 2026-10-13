@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { Color, Mesh, Object3D, SkinnedMesh, type Material } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AssetLibrary, type LoadedGltf } from '../src/assets/AssetLibrary';
-import { CLIP_NAMES, indexClips } from '../src/assets/contract';
+import { indexClips, REQUIRED_CLIPS } from '../src/assets/contract';
 import { createSoldierPlaceholder } from '../src/assets/placeholders';
 import { ModelAnimator } from '../src/render/ModelAnimator';
 import { UnitView } from '../src/render/UnitView';
@@ -37,7 +37,7 @@ describe('model contract', () => {
     const { lib, problems } = await libraryWithRig();
     assert.deepEqual(problems, []);
     assert.ok(lib.hasModel(KEY));
-    assert.deepEqual([...lib.clipsFor(KEY).keys()].sort(), [...CLIP_NAMES].sort());
+    assert.deepEqual([...lib.clipsFor(KEY).keys()].sort(), [...REQUIRED_CLIPS].sort());
   });
 
   it('flags missing clips, wrong scale and a floating origin', async () => {
@@ -149,6 +149,24 @@ describe('animation switching', () => {
     assert.equal(anim.playing, 'idle');
   });
 
+  it('hit flinches never cut a swing or a death short, and do not stack', async () => {
+    const { lib } = await libraryWithRig({ clipNames: ['idle', 'walk', 'attack', 'death', 'hit'] });
+    const anim = new ModelAnimator(lib.instantiate(KEY, 1), lib.clipsFor(KEY));
+    anim.playLoop('walk');
+    anim.playOnce('hit');
+    assert.equal(anim.playing, 'hit', 'a hit interrupts locomotion');
+    anim.playOnce('hit');
+    assert.equal(anim.playing, 'hit', 'a second hit while flinching is a no-op');
+    anim.playOnce('attack');
+    assert.equal(anim.playing, 'attack', 'an attack interrupts a flinch');
+    anim.playOnce('hit');
+    assert.equal(anim.playing, 'attack', 'a hit does not cut the swing');
+    anim.playOnce('death');
+    anim.playOnce('hit');
+    anim.playOnce('attack');
+    assert.equal(anim.playing, 'death', 'nothing interrupts death');
+  });
+
   it('missing clips are ignored safely', async () => {
     const { lib } = await libraryWithRig({ clipNames: ['idle', 'walk'] });
     const anim = new ModelAnimator(lib.instantiate(KEY, 1), lib.clipsFor(KEY));
@@ -181,6 +199,9 @@ describe('UnitView with an animated model', () => {
     assert.equal(view.animator.playing, 'attack');
     for (let i = 0; i < 20; i++) view.update(0.1, null);
     assert.equal(view.animator.playing, 'idle', 'attacking with no swing running → idle');
+
+    view.triggerHit(); // the rig has no hit clip: safely ignored
+    assert.equal(view.animator.playing, 'idle');
 
     unit.state = 'dead';
     view.update(0.016, null);

@@ -4,7 +4,10 @@ import { Box3, type AnimationClip, type Mesh, type Object3D } from 'three';
  * The model contract, in code. Human-readable version: docs/ASSET_SPEC.md.
  * Keep the two in sync.
  */
-export const CLIP_NAMES = ['idle', 'walk', 'attack', 'death'] as const;
+/** Clips every animated unit must ship. */
+export const REQUIRED_CLIPS = ['idle', 'walk', 'attack', 'death'] as const;
+/** Every clip name the game plays; `hit` (a short flinch when struck) is optional. */
+export const CLIP_NAMES = [...REQUIRED_CLIPS, 'hit'] as const;
 export type ClipName = (typeof CLIP_NAMES)[number];
 
 /** A material with this name is cloned and recoloured per team at instantiate time. */
@@ -39,7 +42,7 @@ export function validateModel(scene: Object3D, clips: ReadonlyMap<ClipName, Anim
   const problems: string[] = [];
 
   if (opts.requireClips) {
-    const missing = CLIP_NAMES.filter((n) => !clips.has(n));
+    const missing = REQUIRED_CLIPS.filter((n) => !clips.has(n));
     if (missing.length) problems.push(`missing animation clips: ${missing.join(', ')}`);
   }
 

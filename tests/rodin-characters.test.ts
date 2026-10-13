@@ -85,6 +85,7 @@ describe('clubman.glb (rigged Rodin caveman, model a)', () => {
     const { clips } = await load('/models/clubman.glb');
     assert.ok(clips.get('attack')!.duration < UNITS.clubman!.melee.interval);
     assert.ok(clips.get('death')!.duration <= 1.6, 'death finishes within the corpse linger');
+    assert.ok(clips.get('hit')!.duration <= 0.5, 'short flinch');
   });
 });
 
