@@ -6,12 +6,12 @@ All are a single unrigged mesh with PBR material (3 textures), normalised to ~1.
 
 | File | Downloaded | Tris | Bounding box X×Y×Z (m) | Identity |
 | --- | --- | --- | --- | --- |
-| `rodin_a.glb` | 00:04 | 36,136 | 1.89 × 1.74 × 0.46 | TBD |
-| `rodin_b.glb` | 00:07 | 34,603 | 1.88 × 1.24 × 1.48 | TBD |
-| `rodin_c.glb` | 00:09 | 16,692 | 1.90 × 1.07 × 0.77 | TBD |
-| `rodin_d.glb` | 00:09 | 33,356 | 0.54 × 0.81 × 1.89 | TBD |
-| `rodin_e.glb` | 00:11 | 17,933 | 1.90 × 1.27 × 0.46 | TBD |
-| `rodin_f.glb` | 00:13 | 17,305 | 0.68 × 1.71 × 1.90 | TBD |
-| `rodin_g.glb` | 00:17 | 34,607 | 1.41 × 1.89 × 0.55 | TBD |
+| `rodin_a.glb` | 00:04 | 36,136 | 1.89 × 1.74 × 0.46 | Caveman, T-pose, headband + leopard tunic, **no club in the mesh** (club prop still needed) |
+| `rodin_b.glb` | 00:07 | 34,603 | 1.88 × 1.24 × 1.48 | Cave (stacked boulders, dark doorway) |
+| `rodin_c.glb` | 00:09 | 16,692 | 1.90 × 1.07 × 0.77 | Turret: wooden frame with red sling band (Rock Slingshot, likely) |
+| `rodin_d.glb` | 00:09 | 33,356 | 0.54 × 0.81 × 1.89 | Dinosaur, horned quadruped with saddle (Dino Rider mount) |
+| `rodin_e.glb` | 00:11 | 17,933 | 1.90 × 1.27 × 0.46 | Turret: bird and stone mallet on a wooden mount (Egg Automatic, likely) |
+| `rodin_f.glb` | 00:13 | 17,305 | 0.68 × 1.71 × 1.90 | Turret: bone/skull catapult (Primitive Catapult) |
+| `rodin_g.glb` | 00:17 | 34,607 | 1.41 × 1.89 × 0.55 | Caveman, T-pose, horned skull helmet (Dino Rider rider) |
 
-Expected set (owner's list): T-pose caveman with club, dinosaur, cave, Rock Slingshot turret, Egg Automatic turret, Primitive Catapult turret, helmeted caveman / Dino Rider.
+Identified 2026-10-13 from renders (front + side) in the dev server. Expected set (owner's list): T-pose caveman with club, dinosaur, cave, Rock Slingshot turret, Egg Automatic turret, Primitive Catapult turret, helmeted caveman / Dino Rider.
