@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, Box3, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { EventBus } from '../game/EventBus';
 import type { Unit } from '../sim/Unit';
@@ -9,7 +9,7 @@ import { CameraRig } from './CameraRig';
 import { buildEnvironment, type Environment } from './environment';
 import { PostFx } from './post';
 import { ProjectileRenderer } from './ProjectileRenderer';
-import { UnitView } from './UnitView';
+import { combatTarget, UnitView } from './UnitView';
 
 export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
 
@@ -22,6 +22,8 @@ export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a
  */
 export class GameRenderer {
   readonly rig: CameraRig;
+  /** Set by the game: a unit's melee swing started (swing whoosh). */
+  onSwing: ((unit: Unit) => void) | null = null;
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly views = new Map<number, UnitView>();
@@ -56,7 +58,10 @@ export class GameRenderer {
       if (e.sourceKind === 'unit') this.views.get(e.sourceId)?.triggerAttack();
       else this.baseViews[e.team]?.triggerRecoil(e.sourceId);
     });
-    // No hit/death effects yet (removed on request); the camp itself stays still on hits.
+    bus.on('hit', (e) => {
+      if (e.targetKind === 'unit') this.views.get(e.targetId)?.triggerHit();
+    });
+    // No hit/death particle effects yet (removed on request); the camp itself stays still on hits.
 
     window.addEventListener('resize', () => this.resize());
     this.resize();
@@ -76,6 +81,10 @@ export class GameRenderer {
         this.baseViews[team].rebind(base);
       }
     }
+    // Default gameplay framing: ~2/3 of the player's cave in view (CAMERA.zoom.caveVisible).
+    const home = this.baseViews.player.root;
+    home.updateMatrixWorld(true);
+    this.rig.setFraming(new Box3().setFromObject(home.getObjectByName('CaveBase') ?? home));
     this.rig.snapTo(0);
   }
 
@@ -85,6 +94,8 @@ export class GameRenderer {
     if (!world) return;
     this.rig.update(dt, world.units.length > 0 ? world.frontlineX : null);
     this.syncViews(world);
+    const drawnAt = (u: Unit) => this.views.get(u.id)?.root.position;
+    for (const view of this.views.values()) view.setTarget(combatTarget(world, view.unit, drawnAt));
     for (const view of this.views.values()) view.update(frozen ? 0 : dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
@@ -118,6 +129,11 @@ export class GameRenderer {
         key,
         this.assets.instantiate(unit.def.modelKey, TEAM_TINT[unit.team]),
         this.assets.clipsFor(unit.def.modelKey),
+        {
+          variants: this.assets.clipVariantsFor(unit.def.modelKey),
+          strike: this.assets.strikeTimeFor(unit.def.modelKey),
+          onSwing: (u) => this.onSwing?.(u),
+        },
       );
     }
     view.bind(unit);

@@ -1,6 +1,5 @@
 import { Group } from 'three';
 import { AssetLibrary } from './AssetLibrary';
-import { decorateBiped, prepareBiped } from '../render/age1/autorig';
 import { createDinoRider } from '../render/age1/dino';
 import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot } from '../render/age1/turrets';
 import { createSettlement } from '../render/age1/settlement';
@@ -14,24 +13,39 @@ import { SCENERY } from './scenery';
  */
 export function createAssetLibrary(): AssetLibrary {
   const lib = new AssetLibrary();
-  // Clubman and Slingshot Man: Rodin (Hyper3D) models made for this game, baked to ~14k tris with
-  // vertex colours (assets_src/rodin). They ship without a skeleton, so they are auto-rigged on
-  // load (legs + torso) and animated procedurally. The soldier rig remains the fallback.
+  // Clubman: Rodin (Hyper3D) caveman auto-rigged by Mixamo, with Mixamo clips, a club in the right
+  // fist and a TeamColor belt (assets_src/rodin/mixamo_build.py).
   lib.register('unit.clubman', {
-    url: '/models/caveman_club.glb',
+    url: '/models/clubman.glb',
     placeholder: createSoldierPlaceholder,
     expectedHeight: 1.8,
-    prepare: (scene) => prepareBiped(scene, { height: 1.8 }),
-    decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.55 }),
+    strike: 0.3, // attack clip: the club comes down ~9 frames in (Double Dagger Stab 26-46)
   });
+  // Slingshot Man: the same Mixamo-rigged caveman with a slingshot in the left fist, the Run
+  // Forward run, and a keyed upper-body shot layered over the running/idling legs
+  // (assets_src/rodin/mixamo_build.py prop=sling, attack=@slingfire).
   lib.register('unit.slingshot', {
-    url: '/models/caveman_slingshot.glb',
+    url: '/models/slingshot.glb',
     placeholder: createArcherPlaceholder,
     expectedHeight: 1.8,
-    prepare: (scene) => prepareBiped(scene, { height: 1.8 }),
-    decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.25 }),
+    strike: 0.53, // the pouch is released at frame 16 of the shot
+    partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ },
   });
-  lib.register('unit.dino', { placeholder: createDinoRider });
+  // Dino Rider: procedural dinosaur; the rider is the rigged Rodin caveman (model g, seated pose
+  // and spear) when it loads, else the procedural rider.
+  lib.register('char.dino_rider', { url: '/models/dino_rider.glb', placeholder: () => new Group() });
+  lib.register('unit.dino', {
+    // Rodin dinosaur rigged in Blender with the rider seated on it, one set of clips for both
+    // (assets_src/rodin/rig_dino.py). Without it, the procedural dinosaur below is the fallback.
+    url: '/models/dino.glb',
+    expectedHeight: 3.2,
+    strike: 0.34, // attack clip: the horns connect as the ram peaks (rig_dino.py)
+    placeholder: (tint) =>
+      createDinoRider(
+        tint,
+        lib.hasModel('char.dino_rider') ? { model: lib.instantiate('char.dino_rider', tint), clips: lib.clipsFor('char.dino_rider') } : undefined,
+      ),
+  });
   // The base is Lasha's stone cave (Rodin); without it the procedural camp is the fallback.
   lib.register('prop.stone_hut', { url: '/models/stone_hut.glb', placeholder: () => new Group() });
   lib.register('base.keep', {

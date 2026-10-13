@@ -34,6 +34,23 @@ export const CAMERA = {
     ease: 9,
   },
 
+  /**
+   * Zoom: scales the eye's offset from the look-at point (same angle, closer or farther).
+   * 1 = the main-menu framing. A match starts at the zoom that keeps `caveVisible` of the player's
+   * cave (its projected bounds) on screen; the player can zoom between `min` and `max`.
+   */
+  zoom: {
+    min: 0.4,
+    max: 1.45,
+    caveVisible: 0.67,
+    /** Vertical wheel / pinch: zoom factor per wheel pixel (exponential). */
+    wheel: 0.0015,
+    /** +/- keys: factor per press. */
+    keyStep: 1.15,
+    /** Smoothing toward the goal (1/s). */
+    ease: 8,
+  },
+
   /** Main-menu background: a slow sweep up and down the lane. */
   menuSweep: { amplitude: 26, period: 48 },
 } as const;

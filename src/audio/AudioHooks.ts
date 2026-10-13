@@ -1,15 +1,19 @@
 import type { AudioMixer, BufferLike } from './AudioMixer';
 import type { EventBus } from '../game/EventBus';
+import { SFX, UNIT_WEAPON, type SfxDef } from '../config/sfx';
 
 export type SoundCue =
-  | 'attack_melee'
-  | 'attack_turret'
-  | 'projectile_fire'
-  | 'impact_hit'
-  | 'impact_miss'
-  | 'unit_hit'
+  | 'club_swing'
+  | 'spear_swing'
+  | 'club_hit'
+  | 'spear_hit'
+  | 'unit_hurt'
+  | 'sling_fire'
+  | 'turret_fire'
+  | 'stone_hit'
+  | 'stone_miss'
+  | 'structure_hit'
   | 'unit_death'
-  | 'base_damage'
   | 'unit_spawn'
   | 'age_up'
   | 'victory'
@@ -29,39 +33,69 @@ export class PlaceholderSoundBank implements SoundBank {
   }
 }
 
-/** Map simulation events to sound cues. */
-export function bindAudio(bus: EventBus, bank: SoundBank): void {
-  bus.on('attack', (e) => bank.play(e.sourceKind === 'turret' ? 'attack_turret' : 'attack_melee'));
-  bus.on('projectileFired', () => bank.play('projectile_fire'));
-  bus.on('projectileImpact', (e) => bank.play(e.hit ? 'impact_hit' : 'impact_miss'));
-  bus.on('hit', (e) => e.targetKind === 'unit' && bank.play('unit_hit'));
+/** Unit def id for a sim unit id (the attacker of an `attack` event). */
+export type UnitLookup = (unitId: number) => string | undefined;
+
+/**
+ * Map simulation events to sound cues. A melee blow plays its weapon's impact at the damage
+ * moment (the swing whoosh comes from the renderer when the swing starts, see `swingCue`);
+ * projectiles thwack on units and thud on the ground; base hits use the heavier rock impact.
+ */
+export function bindAudio(bus: EventBus, bank: SoundBank, unitOf: UnitLookup = () => undefined): void {
+  bus.on('attack', (e) => {
+    if (e.sourceKind === 'turret') return bank.play('turret_fire');
+    if (e.mode === 'ranged') return bank.play('sling_fire');
+    bank.play(UNIT_WEAPON[unitOf(e.sourceId) ?? ''] === 'spear' ? 'spear_hit' : 'club_hit');
+  });
+  bus.on('projectileImpact', (e) => bank.play(e.hit ? 'stone_hit' : 'stone_miss'));
+  bus.on('hit', (e) => e.targetKind === 'unit' && bank.play('unit_hurt'));
   bus.on('death', () => bank.play('unit_death'));
-  bus.on('baseDamage', () => bank.play('base_damage'));
+  bus.on('baseDamage', () => bank.play('structure_hit'));
   bus.on('spawn', () => bank.play('unit_spawn'));
   bus.on('ageAdvanced', () => bank.play('age_up'));
   bus.on('victory', () => bank.play('victory'));
   bus.on('defeat', () => bank.play('defeat'));
 }
 
+/** Whoosh for a unit's swing (played by the renderer when the swing animation starts). */
+export function swingCue(unitDefId: string): SoundCue {
+  return UNIT_WEAPON[unitDefId] === 'spear' ? 'spear_swing' : 'club_swing';
+}
+
 /**
- * Sound bank on the mixer's sfx channel (separate from music). Cues without a registered sound
- * are only counted, so gameplay works before any effect files exist. Register effects with
- * `load(cue, url)` once they are added under public/audio/sfx/.
+ * Sound bank on the mixer's sfx channel (separate from music), mixed per cue (src/config/sfx.ts):
+ * cue volume, a random take and pitch per play, at most `maxVoices` copies at once and no repeat
+ * within `minGap` seconds, so big fights stay readable. Cues without loaded files are only
+ * counted, so gameplay works before any effect files exist.
  */
 export class MixerSoundBank extends PlaceholderSoundBank {
-  private readonly sounds = new Map<SoundCue, BufferLike>();
+  private readonly sounds = new Map<SoundCue, BufferLike[]>();
+  private readonly voices = new Map<SoundCue, number>();
+  private readonly lastPlayed = new Map<SoundCue, number>();
+  /** Plays actually started (after voice limiting), for tests and debugging. */
+  readonly started: Partial<Record<SoundCue, number>> = {};
 
-  constructor(private readonly mixer: AudioMixer) {
+  constructor(
+    private readonly mixer: AudioMixer,
+    private readonly defs: Record<SoundCue, SfxDef> = SFX,
+    private readonly random: () => number = Math.random,
+  ) {
     super();
   }
 
-  async load(cue: SoundCue, url: string): Promise<void> {
+  /** Load every file listed in the sfx config (none yet). */
+  async loadAll(fetcher: typeof fetch = fetch): Promise<void> {
+    await Promise.all(Object.entries(this.defs).flatMap(([cue, def]) => def.files.map((f) => this.load(cue as SoundCue, f, fetcher))));
+  }
+
+  async load(cue: SoundCue, url: string, fetcher: (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }> = fetch): Promise<void> {
     const ctx = this.mixer.context();
     if (!ctx) return;
     try {
-      const res = await fetch(url);
+      const res = await fetcher(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.sounds.set(cue, await ctx.decodeAudioData(await res.arrayBuffer()));
+      const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+      this.sounds.set(cue, [...(this.sounds.get(cue) ?? []), buf]);
     } catch (err) {
       console.warn(`[sfx] ${cue}: could not load ${url} (${(err as Error).message})`);
     }
@@ -69,13 +103,29 @@ export class MixerSoundBank extends PlaceholderSoundBank {
 
   override play(cue: SoundCue): void {
     super.play(cue);
-    const buffer = this.sounds.get(cue);
+    const takes = this.sounds.get(cue);
     const ctx = this.mixer.context();
     const bus = this.mixer.bus('sfx');
-    if (!buffer || !ctx || !bus || ctx.state !== 'running') return;
+    if (!takes?.length || !ctx || !bus || ctx.state !== 'running') return;
+    const def = this.defs[cue];
+    const now = ctx.currentTime;
+    if ((this.voices.get(cue) ?? 0) >= def.maxVoices) return;
+    if (now - (this.lastPlayed.get(cue) ?? -Infinity) < def.minGap) return;
+    this.lastPlayed.set(cue, now);
+    this.voices.set(cue, (this.voices.get(cue) ?? 0) + 1);
+    this.started[cue] = (this.started[cue] ?? 0) + 1;
+
     const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(bus);
+    src.buffer = takes[Math.floor(this.random() * takes.length) % takes.length]!;
+    if (src.playbackRate) src.playbackRate.value = 1 + (this.random() * 2 - 1) * def.pitch;
+    const gain = ctx.createGain();
+    gain.gain.value = def.volume;
+    src.connect(gain);
+    gain.connect(bus);
+    src.onended = () => {
+      this.voices.set(cue, Math.max(0, (this.voices.get(cue) ?? 1) - 1));
+      gain.disconnect();
+    };
     src.start();
   }
 }

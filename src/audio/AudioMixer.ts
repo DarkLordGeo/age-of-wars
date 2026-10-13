@@ -38,6 +38,9 @@ export interface SourceLike {
   disconnect(): void;
   start(when?: number, offset?: number): void;
   stop(when?: number): void;
+  /** Optional in fakes; Web Audio sources always have it. */
+  playbackRate?: ParamLike;
+  onended?: (() => void) | null;
 }
 
 const STORE_KEY = 'aow.volume';
