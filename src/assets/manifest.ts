@@ -14,16 +14,16 @@ import { SCENERY } from './scenery';
  */
 export function createAssetLibrary(): AssetLibrary {
   const lib = new AssetLibrary();
-  // Clubman and Slingshot Man: Rodin (Hyper3D) models made for this game, baked to ~14k tris with
-  // vertex colours (assets_src/rodin). They ship without a skeleton, so they are auto-rigged on
-  // load (legs + torso) and animated procedurally. The soldier rig remains the fallback.
+  // Clubman: Rodin (Hyper3D) T-pose caveman rigged in Blender with a 17-bone skeleton, a club
+  // on the right hand, a TeamColor belt and keyframed idle/walk/attack/death clips
+  // (assets_src/rodin/rig_caveman.py).
   lib.register('unit.clubman', {
-    url: '/models/caveman_club.glb',
+    url: '/models/clubman.glb',
     placeholder: createSoldierPlaceholder,
     expectedHeight: 1.8,
-    prepare: (scene) => prepareBiped(scene, { height: 1.8 }),
-    decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.55 }),
   });
+  // Slingshot Man: Rodin model baked to ~14k tris with vertex colours (assets_src/rodin). It ships
+  // without a skeleton, so it is auto-rigged on load (legs + torso) and animated procedurally.
   lib.register('unit.slingshot', {
     url: '/models/caveman_slingshot.glb',
     placeholder: createArcherPlaceholder,
@@ -31,7 +31,16 @@ export function createAssetLibrary(): AssetLibrary {
     prepare: (scene) => prepareBiped(scene, { height: 1.8 }),
     decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.25 }),
   });
-  lib.register('unit.dino', { placeholder: createDinoRider });
+  // Dino Rider: procedural dinosaur; the rider is the rigged Rodin caveman (model g, seated pose
+  // and spear) when it loads, else the procedural rider.
+  lib.register('char.dino_rider', { url: '/models/dino_rider.glb', placeholder: () => new Group() });
+  lib.register('unit.dino', {
+    placeholder: (tint) =>
+      createDinoRider(
+        tint,
+        lib.hasModel('char.dino_rider') ? { model: lib.instantiate('char.dino_rider', tint), clips: lib.clipsFor('char.dino_rider') } : undefined,
+      ),
+  });
   // The base is Lasha's stone cave (Rodin); without it the procedural camp is the fallback.
   lib.register('prop.stone_hut', { url: '/models/stone_hut.glb', placeholder: () => new Group() });
   lib.register('base.keep', {
