@@ -1,7 +1,7 @@
 import { type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { indexClips, TEAM_COLOR_MATERIAL, validateModel, type ClipName } from './contract';
+import { clipVariants, indexClips, TEAM_COLOR_MATERIAL, validateModel, type ClipName } from './contract';
 
 export interface AssetSpec {
   /** Path to a .glb under /public (e.g. '/models/soldier.glb'). When absent or failing, the placeholder is used. */
@@ -27,9 +27,11 @@ export interface LoadedGltf {
 interface LoadedModel {
   scene: Object3D;
   clips: ReadonlyMap<ClipName, AnimationClip>;
+  variants: ReadonlyMap<ClipName, readonly AnimationClip[]>;
 }
 
 const NO_CLIPS: ReadonlyMap<ClipName, AnimationClip> = new Map();
+const NO_VARIANTS: ReadonlyMap<ClipName, readonly AnimationClip[]> = new Map();
 
 /**
  * Single door through which the renderer obtains models. Game logic only knows string
@@ -86,7 +88,7 @@ export class AssetLibrary {
       requireClips: spec.expectedHeight !== undefined && !spec.prepare,
     });
     if (problems.length) console.warn(`[assets] "${key}" does not meet the model contract:\n - ${problems.join('\n - ')}`);
-    this.loaded.set(key, { scene, clips });
+    this.loaded.set(key, { scene, clips, variants: clipVariants(gltf.animations) });
     return problems;
   }
 
@@ -106,6 +108,11 @@ export class AssetLibrary {
   /** Contract clips for `key` (empty for placeholders). Clips are immutable and shared. */
   clipsFor(key: string): ReadonlyMap<ClipName, AnimationClip> {
     return this.loaded.get(key)?.clips ?? NO_CLIPS;
+  }
+
+  /** Every variant of each clip for `key` ("death", "death_2", ...); empty for placeholders. */
+  clipVariantsFor(key: string): ReadonlyMap<ClipName, readonly AnimationClip[]> {
+    return this.loaded.get(key)?.variants ?? NO_VARIANTS;
   }
 
   /**

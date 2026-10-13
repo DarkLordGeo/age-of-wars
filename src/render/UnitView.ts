@@ -36,8 +36,9 @@ export class UnitView {
     readonly poolKey: string,
     private readonly model: Object3D,
     clips: ReadonlyMap<ClipName, AnimationClip>,
+    variants?: ReadonlyMap<ClipName, readonly AnimationClip[]>,
   ) {
-    this.animator = clips.size > 0 ? new ModelAnimator(model, clips) : null;
+    this.animator = clips.size > 0 ? new ModelAnimator(model, clips, variants) : null;
     this.root.add(model);
     const bg = new Mesh(barGeo, barBg);
     bg.scale.set(BAR_W, BAR_H, 1);

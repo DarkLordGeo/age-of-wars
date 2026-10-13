@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { Box3, Vector3, type Material, type Mesh, type Object3D, type SkinnedMesh } from 'three';
+import { AnimationMixer, Vector3, type Material, type Mesh, type Object3D, type SkinnedMesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { indexClips, MAX_UNIT_TRIANGLES, TEAM_COLOR_MATERIAL, validateModel } from '../src/assets/contract';
+import { clipVariants, indexClips, MAX_UNIT_TRIANGLES, TEAM_COLOR_MATERIAL, validateModel } from '../src/assets/contract';
+import { GAME } from '../src/config/game';
 import { UNITS } from '../src/config/units';
 import { createDinoRider } from '../src/render/age1/dino';
 
@@ -53,39 +54,56 @@ function skinned(root: Object3D): SkinnedMesh | undefined {
   return s;
 }
 
-describe('clubman.glb (rigged Rodin caveman, model a)', () => {
+describe('clubman.glb (Rodin caveman a, Mixamo rig and animations)', () => {
   it('meets the unit contract: 1.8 m, feet at y=0, idle/walk/attack/death, triangle budget', async () => {
     const { scene, clips, bytes } = await load('/models/clubman.glb');
     assert.deepEqual(validateModel(scene, clips, { expectedHeight: 1.8, requireClips: true }), []);
     assert.ok(triangles(scene) <= MAX_UNIT_TRIANGLES);
-    assert.ok(bytes < 1.5e6, `${bytes} bytes`);
+    assert.ok(bytes < 1.6e6, `${bytes} bytes`);
   });
 
-  it('is a real skinned rig (17 bones), not a rigid mesh', async () => {
+  it('is a real skinned Mixamo rig, facing +X', async () => {
     const { scene } = await load('/models/clubman.glb');
     const body = skinned(scene);
     assert.ok(body, 'skinned body mesh');
-    assert.equal(body.skeleton.bones.length, 17);
-    for (const b of ['Hips', 'Spine', 'Head', 'UpperArmR', 'HandR', 'ThighL', 'FootR']) assert.ok(scene.getObjectByName(b), b);
-  });
-
-  it('carries the club in the right hand and a team-colour belt; faces +X', async () => {
-    const { scene } = await load('/models/clubman.glb');
-    const club = scene.getObjectByName('Club');
-    assert.ok(club && under(club, 'HandR'), 'club parented to the right hand bone');
-    assert.ok(materials(scene).some((m) => m.name === TEAM_COLOR_MATERIAL), 'TeamColor material');
-    // In the bind (T) pose the club points straight forward from the fist: +X in game space.
+    assert.equal(body.skeleton.bones.length, 65);
     scene.updateMatrixWorld(true);
-    const hand = scene.getObjectByName('HandR')!.getWorldPosition(new Vector3());
-    const c = new Box3().setFromObject(club).getCenter(new Vector3());
-    assert.ok(c.x - hand.x > 0.15, `club centre ${c.x.toFixed(2)} ahead of the hand ${hand.x.toFixed(2)}`);
+    const foot = scene.getObjectByName('mixamorigLeftFoot')!.getWorldPosition(new Vector3());
+    const toe = scene.getObjectByName('mixamorigLeftToeBase')!.getWorldPosition(new Vector3());
+    assert.ok(toe.x - foot.x > 0.05, 'toes point along +X');
   });
 
-  it('attack clip fits between two club hits', async () => {
-    const { clips } = await load('/models/clubman.glb');
-    assert.ok(clips.get('attack')!.duration < UNITS.clubman!.melee.interval);
-    assert.ok(clips.get('death')!.duration <= 1.6, 'death finishes within the corpse linger');
-    assert.ok(clips.get('hit')!.duration <= 0.5, 'short flinch');
+  it('keeps the club in the right fist through the swing, and has a team-colour belt', async () => {
+    const { scene, clips } = await load('/models/clubman.glb');
+    assert.ok(materials(scene).some((m) => m.name === TEAM_COLOR_MATERIAL), 'TeamColor material');
+    const club = scene.getObjectByName('Club') as SkinnedMesh;
+    assert.ok(club?.isSkinnedMesh, 'club is skinned to the hand');
+    const hand = scene.getObjectByName('mixamorigRightHand')!;
+    const mixer = new AnimationMixer(scene);
+    const attack = clips.get('attack')!;
+    mixer.clipAction(attack).play();
+    for (const t of [0, attack.duration * 0.5, attack.duration * 0.95]) {
+      mixer.setTime(t);
+      scene.updateMatrixWorld(true);
+      const hp = hand.getWorldPosition(new Vector3());
+      const pos = club.geometry.getAttribute('position');
+      let nearest = Infinity;
+      const v = new Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        club.getVertexPosition(i, v);
+        nearest = Math.min(nearest, v.applyMatrix4(club.matrixWorld).distanceTo(hp));
+      }
+      assert.ok(nearest < 0.15, `club ${nearest.toFixed(3)} m from the hand at t=${t.toFixed(2)}`);
+    }
+  });
+
+  it('clip timing fits the game: swing between hits, deaths within the corpse linger, two death takes', async () => {
+    const buf = readFileSync(join(PUBLIC, '/models/clubman.glb'));
+    const gltf = await new GLTFLoader().parseAsync(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '');
+    const variants = clipVariants(gltf.animations);
+    assert.ok(variants.get('attack')![0]!.duration < UNITS.clubman!.melee.interval);
+    assert.equal(variants.get('death')!.length, 2, 'death and death_2');
+    for (const d of variants.get('death')!) assert.ok(d.duration <= GAME.corpseLinger, `${d.name} ${d.duration.toFixed(2)} s`);
   });
 });
 

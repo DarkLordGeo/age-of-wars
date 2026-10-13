@@ -17,21 +17,40 @@ const PRIORITY: Partial<Record<ClipName, number>> = { hit: 1, attack: 2, death: 
  */
 export class ModelAnimator {
   private readonly mixer: AnimationMixer;
-  private readonly actions = new Map<ClipName, AnimationAction>();
+  /** Every variant per clip name ("death", "death_2", ...). */
+  private readonly actions = new Map<ClipName, AnimationAction[]>();
   private current: ClipName | null = null;
+  private currentAction: AnimationAction | null = null;
   private busy = false;
 
-  constructor(root: Object3D, clips: ReadonlyMap<ClipName, AnimationClip>) {
+  /**
+   * `variants` (optional) adds alternative takes per clip; one-shots pick one at random each
+   * time they play (e.g. a different death per unit). Loops always use the first take.
+   */
+  constructor(
+    root: Object3D,
+    clips: ReadonlyMap<ClipName, AnimationClip>,
+    variants?: ReadonlyMap<ClipName, readonly AnimationClip[]>,
+    private readonly random: () => number = Math.random,
+  ) {
     this.mixer = new AnimationMixer(root);
-    for (const [name, clip] of clips) this.actions.set(name, this.mixer.clipAction(clip));
+    for (const [name, clip] of clips) {
+      const takes = variants?.get(name)?.length ? variants.get(name)! : [clip];
+      this.actions.set(name, takes.map((c) => this.mixer.clipAction(c)));
+    }
     this.mixer.addEventListener('finished', (e) => {
-      if (this.actions.get('death') !== e.action) this.busy = false;
+      if (!this.actions.get('death')?.includes(e.action)) this.busy = false;
     });
   }
 
   /** Name of the clip currently driving the model. */
   get playing(): ClipName | null {
     return this.current;
+  }
+
+  /** The clip (take) currently driving the model. */
+  get playingClip(): AnimationClip | null {
+    return this.currentAction?.getClip() ?? null;
   }
 
   has(name: ClipName): boolean {
@@ -62,13 +81,15 @@ export class ModelAnimator {
   reset(): void {
     this.mixer.stopAllAction();
     this.current = null;
+    this.currentAction = null;
     this.busy = false;
   }
 
   private start(name: ClipName, once: boolean): void {
-    const next = this.actions.get(name);
-    if (!next) return; // clip missing: keep whatever is playing
-    const prev = this.current ? this.actions.get(this.current) : undefined;
+    const takes = this.actions.get(name);
+    if (!takes?.length) return; // clip missing: keep whatever is playing
+    const next = once && takes.length > 1 ? takes[Math.floor(this.random() * takes.length) % takes.length]! : takes[0]!;
+    const prev = this.currentAction;
     next.reset();
     next.setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity);
     next.clampWhenFinished = once;
@@ -79,6 +100,7 @@ export class ModelAnimator {
       next.play();
     }
     this.current = name;
+    this.currentAction = next;
     this.busy = once;
   }
 }

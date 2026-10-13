@@ -167,6 +167,20 @@ describe('animation switching', () => {
     assert.equal(anim.playing, 'death', 'nothing interrupts death');
   });
 
+  it('one-shots with several takes pick one at random; loops use the first', async () => {
+    const { lib } = await libraryWithRig({ clipNames: ['idle', 'walk', 'attack', 'death', 'death_2'] });
+    const variants = lib.clipVariantsFor(KEY);
+    assert.deepEqual(variants.get('death')!.map((c) => c.name), ['death', 'death_2']);
+    assert.equal(lib.clipsFor(KEY).get('death')!.name, 'death', 'the contract map keeps the first take');
+    const pick = (r: number): string => {
+      const anim = new ModelAnimator(lib.instantiate(KEY, 1), lib.clipsFor(KEY), variants, () => r);
+      anim.playOnce('death');
+      return anim.playingClip!.name;
+    };
+    assert.equal(pick(0.1), 'death');
+    assert.equal(pick(0.9), 'death_2');
+  });
+
   it('missing clips are ignored safely', async () => {
     const { lib } = await libraryWithRig({ clipNames: ['idle', 'walk'] });
     const anim = new ModelAnimator(lib.instantiate(KEY, 1), lib.clipsFor(KEY));

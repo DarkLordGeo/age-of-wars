@@ -7,8 +7,10 @@ auto-rigged). <pbr_source.glb>: the raw Rodin export, whose full PBR material (b
 metallic-roughness, normal) replaces the FBX's simplified one (same UVs). Each clip=... adds an
 animation from a Mixamo FBX of the same character ("With Skin" or "Without Skin"), optionally
 trimmed to frames start-end (Mixamo frame numbers, 30 fps), e.g. attack=stab.fbx:26-46.
-A clip may also be `walk=run.fbx:1-22@1.25` to time-scale it (playback rate) so the stride
-matches the unit's speed.
+Suffixes: `~` plays the range forward then back (a seamless loop from a short still), `!`
+removes the hips' horizontal travel (root motion: the sim moves units), `@rate` time-scales the
+clip, e.g. `walk=run.fbx:1-23!@1.25` so the stride matches the unit's speed. Variants of one clip
+are named `death`, `death_2`, ...; the game picks one at random each time.
 
 Adds the club on mixamorig:RightHand and the TeamColor belt on mixamorig:Hips (same props as
 rig_caveman.py), turns the figure to face +X and exports with one glTF animation per clip.
@@ -19,15 +21,14 @@ from mathutils import Matrix, Vector
 
 args = sys.argv[sys.argv.index('--') + 1:]
 OUT, RIGGED, PBR = args[0], args[1], args[2]
+import re
+SPEC = re.compile(r'^(?P<path>.+?)(?::(?P<a>\d+)-(?P<b>\d+))?(?P<flags>[~!]*)(?:@(?P<rate>[\d.]+))?$')
 CLIPS = []
 for a in args[3:]:
     name, spec = a.split('=', 1)
-    rate = 1.0
-    if '@' in spec:
-        spec, r = spec.rsplit('@', 1)
-        rate = float(r)
-    path, rng = (spec.rsplit(':', 1) if ':' in spec[2:] else (spec, None))
-    CLIPS.append((name, path, tuple(int(x) for x in rng.split('-')) if rng else None, rate))
+    m = SPEC.match(spec)
+    rng = (int(m['a']), int(m['b'])) if m['a'] else None
+    CLIPS.append((name, m['path'], rng, float(m['rate'] or 1.0), m['flags']))
 REPO = OUT.replace('\\', '/').split('public/')[0]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -98,30 +99,37 @@ def fcurves(act):
     return list(act.fcurves)
 
 
-def trim(act, f0, f1, rate):
-    """Keep keys in [f0, f1], shift them to start at frame 0 and time-scale by 1/rate."""
+def trim(act, f0, f1, rate, pingpong=False, in_place=False):
+    """Keep keys in [f0, f1], shift them to start at frame 0, optionally append the range
+    reversed (pingpong), remove the hips' travel (in_place) and time-scale by 1/rate."""
+    span = f1 - f0
     for fc in fcurves(act):
-        pts = [(k.co.x, k.co.y) for k in fc.keyframe_points if f0 - 1e-3 <= k.co.x <= f1 + 1e-3]
+        pts = [(k.co.x - f0, k.co.y) for k in fc.keyframe_points if f0 - 1e-3 <= k.co.x <= f1 + 1e-3]
+        if in_place and fc.data_path == 'pose.bones["mixamorig:Hips"].location' and len(pts) > 1:
+            drift = pts[-1][1] - pts[0][1]
+            pts = [(x, y - drift * x / span) for x, y in pts]  # linear travel out, bob/sway kept
+        if pingpong:
+            pts += [(2 * span - x, y) for x, y in reversed(pts[:-1])]
         fc.keyframe_points.clear()
         fc.keyframe_points.add(len(pts))
         for k, (x, y) in zip(fc.keyframe_points, pts):
-            k.co = ((x - f0) / rate, y)
+            k.co = (x / rate, y)
             k.interpolation = 'LINEAR'
         fc.update()
 
 
-for name, path, rng, rate in CLIPS:
+for name, path, rng, rate, flags in CLIPS:
     src_act = action_from(path)
     act = src_act.copy()
     act.name = name
     act.use_fake_user = True
     f0, f1 = rng if rng else (int(src_act.frame_range[0]), int(src_act.frame_range[1]))
-    trim(act, f0, f1, rate)
+    trim(act, f0, f1, rate, pingpong='~' in flags, in_place='!' in flags)
     tr = arm.animation_data.nla_tracks.new()
     tr.name = name
     st = tr.strips.new(name, 0, act)
     st.name = name
-    print(f'CLIP {name}: frames {f0}-{f1} ({(f1 - f0) / 30 / rate:.2f}s at rate {rate})')
+    print(f'CLIP {name}: frames {f0}-{f1}{flags} ({(f1 - f0) * (2 if "~" in flags else 1) / 30 / rate:.2f}s at rate {rate})')
 
 # ------------------------------------------------------------------ props (same as rig_caveman.py)
 pose = {b.name: b for b in arm.pose.bones}

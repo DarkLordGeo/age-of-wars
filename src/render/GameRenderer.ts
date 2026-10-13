@@ -121,6 +121,7 @@ export class GameRenderer {
         key,
         this.assets.instantiate(unit.def.modelKey, TEAM_TINT[unit.team]),
         this.assets.clipsFor(unit.def.modelKey),
+        this.assets.clipVariantsFor(unit.def.modelKey),
       );
     }
     view.bind(unit);
