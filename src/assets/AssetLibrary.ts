@@ -14,6 +14,8 @@ export interface AssetSpec {
   lazy?: boolean;
   /** Adds extra parts (e.g. gear parented to a bone) to every instance of the loaded GLB. */
   decorate?: (model: Object3D, tint: number) => void;
+  /** Seconds into the GLB's attack clip where the blow lands (strike-synced melee swings). */
+  strike?: number;
   /** Runs once on the loaded GLB scene before it is used (e.g. auto-rigging a static model). */
   prepare?: (scene: Object3D) => Object3D;
 }
@@ -108,6 +110,11 @@ export class AssetLibrary {
   /** Contract clips for `key` (empty for placeholders). Clips are immutable and shared. */
   clipsFor(key: string): ReadonlyMap<ClipName, AnimationClip> {
     return this.loaded.get(key)?.clips ?? NO_CLIPS;
+  }
+
+  /** Strike time of `key`'s attack clip, when its GLB (not the placeholder) is loaded. */
+  strikeTimeFor(key: string): number | undefined {
+    return this.loaded.has(key) ? this.specs.get(key)?.strike : undefined;
   }
 
   /** Every variant of each clip for `key` ("death", "death_2", ...); empty for placeholders. */

@@ -22,6 +22,8 @@ export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a
  */
 export class GameRenderer {
   readonly rig: CameraRig;
+  /** Set by the game: a unit's melee swing started (swing whoosh). */
+  onSwing: ((unit: Unit) => void) | null = null;
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly views = new Map<number, UnitView>();
@@ -121,7 +123,11 @@ export class GameRenderer {
         key,
         this.assets.instantiate(unit.def.modelKey, TEAM_TINT[unit.team]),
         this.assets.clipsFor(unit.def.modelKey),
-        this.assets.clipVariantsFor(unit.def.modelKey),
+        {
+          variants: this.assets.clipVariantsFor(unit.def.modelKey),
+          strike: this.assets.strikeTimeFor(unit.def.modelKey),
+          onSwing: (u) => this.onSwing?.(u),
+        },
       );
     }
     view.bind(unit);

@@ -14,13 +14,13 @@ import { SCENERY } from './scenery';
  */
 export function createAssetLibrary(): AssetLibrary {
   const lib = new AssetLibrary();
-  // Clubman: Rodin (Hyper3D) T-pose caveman rigged in Blender with a 17-bone skeleton, a club
-  // on the right hand, a TeamColor belt and keyframed idle/walk/attack/death clips
-  // (assets_src/rodin/rig_caveman.py).
+  // Clubman: Rodin (Hyper3D) caveman auto-rigged by Mixamo, with Mixamo clips, a club in the right
+  // fist and a TeamColor belt (assets_src/rodin/mixamo_build.py).
   lib.register('unit.clubman', {
     url: '/models/clubman.glb',
     placeholder: createSoldierPlaceholder,
     expectedHeight: 1.8,
+    strike: 0.3, // attack clip: the club comes down ~9 frames in (Double Dagger Stab 26-46)
   });
   // Slingshot Man: Rodin model baked to ~14k tris with vertex colours (assets_src/rodin). It ships
   // without a skeleton, so it is auto-rigged on load (legs + torso) and animated procedurally.
@@ -35,6 +35,11 @@ export function createAssetLibrary(): AssetLibrary {
   // and spear) when it loads, else the procedural rider.
   lib.register('char.dino_rider', { url: '/models/dino_rider.glb', placeholder: () => new Group() });
   lib.register('unit.dino', {
+    // Rodin dinosaur rigged in Blender with the rider seated on it, one set of clips for both
+    // (assets_src/rodin/rig_dino.py). Without it, the procedural dinosaur below is the fallback.
+    url: '/models/dino.glb',
+    expectedHeight: 3.2,
+    strike: 0.34, // attack clip: the horns connect as the ram peaks (rig_dino.py)
     placeholder: (tint) =>
       createDinoRider(
         tint,

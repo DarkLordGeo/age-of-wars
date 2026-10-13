@@ -22,6 +22,8 @@ export class ModelAnimator {
   private current: ClipName | null = null;
   private currentAction: AnimationAction | null = null;
   private busy = false;
+  private loopRate = 1;
+  private attackRate = 1;
 
   /**
    * `variants` (optional) adds alternative takes per clip; one-shots pick one at random each
@@ -31,7 +33,7 @@ export class ModelAnimator {
     root: Object3D,
     clips: ReadonlyMap<ClipName, AnimationClip>,
     variants?: ReadonlyMap<ClipName, readonly AnimationClip[]>,
-    private readonly random: () => number = Math.random,
+    private random: () => number = Math.random,
   ) {
     this.mixer = new AnimationMixer(root);
     for (const [name, clip] of clips) {
@@ -41,6 +43,16 @@ export class ModelAnimator {
     this.mixer.addEventListener('finished', (e) => {
       if (!this.actions.get('death')?.includes(e.action)) this.busy = false;
     });
+  }
+
+  /**
+   * Per-unit variation (set on bind): loop playback rate and start phase, swing speed, and the
+   * random source for picking takes. Keeps identical units from moving in lockstep.
+   */
+  vary(v: { loopRate?: number; attackRate?: number; random?: () => number }): void {
+    this.loopRate = v.loopRate ?? 1;
+    this.attackRate = v.attackRate ?? 1;
+    if (v.random) this.random = v.random;
   }
 
   /** Name of the clip currently driving the model. */
@@ -63,14 +75,19 @@ export class ModelAnimator {
     this.start(name, false);
   }
 
+  /** Seconds into the take currently playing (clip time, not wall time). */
+  get time(): number {
+    return this.currentAction?.time ?? 0;
+  }
+
   /**
    * Play `name` once, interrupting loops and lower-priority one-shots (see PRIORITY).
    * Death stays on its final pose.
    */
-  playOnce(name: ClipName): void {
-    if (this.current === name && this.busy) return;
-    if (this.busy && this.current && (PRIORITY[this.current] ?? 0) > (PRIORITY[name] ?? 0)) return;
-    this.start(name, true);
+  playOnce(name: ClipName): boolean {
+    if (this.current === name && this.busy) return false;
+    if (this.busy && this.current && (PRIORITY[this.current] ?? 0) > (PRIORITY[name] ?? 0)) return false;
+    return this.start(name, true);
   }
 
   update(dt: number): void {
@@ -85,14 +102,16 @@ export class ModelAnimator {
     this.busy = false;
   }
 
-  private start(name: ClipName, once: boolean): void {
+  private start(name: ClipName, once: boolean): boolean {
     const takes = this.actions.get(name);
-    if (!takes?.length) return; // clip missing: keep whatever is playing
+    if (!takes?.length) return false; // clip missing: keep whatever is playing
     const next = once && takes.length > 1 ? takes[Math.floor(this.random() * takes.length) % takes.length]! : takes[0]!;
     const prev = this.currentAction;
     next.reset();
     next.setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity);
     next.clampWhenFinished = once;
+    next.timeScale = once ? (name === 'attack' ? this.attackRate : 1) : this.loopRate;
+    if (!once) next.time = this.random() * next.getClip().duration; // random loop phase
     if (prev && prev !== next) {
       next.fadeIn(FADE).play();
       prev.fadeOut(FADE);
@@ -102,5 +121,6 @@ export class ModelAnimator {
     this.current = name;
     this.currentAction = next;
     this.busy = once;
+    return true;
   }
 }

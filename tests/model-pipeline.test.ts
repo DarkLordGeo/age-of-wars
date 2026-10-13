@@ -227,7 +227,8 @@ describe('UnitView with an animated model', () => {
     next.moving = false;
     view.bind(next);
     assert.equal(view.animator.playing, 'idle', 'pooled view is reset');
-    assert.equal(view.root.position.x, next.centerX(-1));
+    assert.equal(view.root.position.x, view.drawX(), 'drawn with its visual front on the unit front');
+    assert.ok(Math.abs(view.drawX() - next.x) < 0.5);
   });
 
   it('placeholder models keep the procedural path', () => {

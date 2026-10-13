@@ -136,3 +136,20 @@ describe('dino_rider.glb (rigged Rodin rider, model g)', () => {
     assert.ok(thrust.x > back.x + 0.3, 'spear thrust forward (+X)');
   });
 });
+
+describe('dino.glb (Rodin dinosaur d + seated rider, one set of clips)', () => {
+  it('meets the unit contract (3.2 m class, idle/walk/attack/death, <=20k tris) with two skins', async () => {
+    const { scene, clips } = await load('/models/dino.glb');
+    assert.deepEqual(validateModel(scene, clips, { expectedHeight: 3.2, requireClips: true }), []);
+    assert.ok(triangles(scene) <= MAX_UNIT_TRIANGLES);
+    const skins = new Set<unknown>();
+    scene.traverse((o) => (o as SkinnedMesh).isSkinnedMesh && skins.add((o as SkinnedMesh).skeleton));
+    assert.equal(skins.size, 2, 'dinosaur and rider skeletons');
+    assert.ok(scene.getObjectByName('Spear'), 'rider keeps the spear');
+    assert.ok(materials(scene).some((m) => m.name === TEAM_COLOR_MATERIAL), 'rider belt takes the team colour');
+    for (const name of ['idle', 'walk', 'attack', 'death'] as const) {
+      const tracks = clips.get(name)!.tracks.map((t) => t.name.split('.')[0]!);
+      assert.ok(tracks.some((n) => n.startsWith('Head')) && tracks.some((n) => n === 'HandR'), `${name} drives dinosaur and rider`);
+    }
+  });
+});

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AudioMixer, type AudioCtxLike, type BufferLike, type GainLike, type ParamLike, type SourceLike } from '../src/audio/AudioMixer';
 import { MusicPlayer } from '../src/audio/MusicPlayer';
+import { bindAudio, MixerSoundBank, PlaceholderSoundBank, swingCue, type SoundCue } from '../src/audio/AudioHooks';
+import { SFX } from '../src/config/sfx';
+import { EventBus } from '../src/game/EventBus';
 import { MUSIC, MUSIC_FADE } from '../src/config/music';
 
 /** Records every node and automation call so tests can inspect the audio graph. */
@@ -178,5 +181,55 @@ describe('audio: mixer channels', () => {
     assert.equal((mixer.bus('sfx') as FakeGain).gain.value, 0.9);
     mixer.setVolume('music', 3);
     assert.equal(mixer.getVolume('music'), 1);
+  });
+});
+
+describe('audio: sound effects', () => {
+  it('maps game events to distinct cues (weapon-specific melee impacts)', () => {
+    const bus = new EventBus();
+    const bank = new PlaceholderSoundBank();
+    const defs: Record<number, string> = { 1: 'clubman', 2: 'dino' };
+    bindAudio(bus, bank, (id) => defs[id]);
+    bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'unit', sourceId: 1, mode: 'melee' });
+    bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'unit', sourceId: 2, mode: 'melee' });
+    bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'unit', sourceId: 3, mode: 'ranged' });
+    bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'turret', sourceId: 0, mode: 'ranged' });
+    bus.dispatch({ type: 'projectileImpact', projectileId: 1, defId: 'rock', hit: true, x: 0, y: 1, z: 0 });
+    bus.dispatch({ type: 'projectileImpact', projectileId: 2, defId: 'rock', hit: false, x: 0, y: 0, z: 0 });
+    bus.dispatch({ type: 'hit', targetKind: 'unit', targetId: 1, team: 'enemy', damage: 5, x: 0, y: 1, z: 0 });
+    bus.dispatch({ type: 'baseDamage', team: 'enemy', damage: 16, health: 400 });
+    bus.dispatch({ type: 'death', unitId: 1, team: 'enemy', killerTeam: 'player' });
+    assert.deepEqual(bank.counts, {
+      club_hit: 1, spear_hit: 1, sling_fire: 1, turret_fire: 1, stone_hit: 1, stone_miss: 1, unit_hurt: 1, structure_hit: 1, unit_death: 1,
+    });
+    assert.equal(swingCue('clubman'), 'club_swing');
+    assert.equal(swingCue('dino'), 'spear_swing');
+  });
+
+  it('mixes per cue: volume, voice cap, repeat gap, random take and pitch', async () => {
+    const ctx = new FakeCtx();
+    const mixer = new AudioMixer(() => ctx);
+    const defs = { ...SFX, club_hit: { files: [], volume: 0.7, maxVoices: 2, minGap: 0.05, pitch: 0.1 } };
+    const bank = new MixerSoundBank(mixer, defs as typeof SFX, () => 0.75);
+    await bank.load('club_hit', 'a.ogg', okFetch);
+    await bank.load('club_hit', 'b.ogg', okFetch);
+    const play = (cue: SoundCue, at: number): void => {
+      ctx.currentTime = at;
+      bank.play(cue);
+    };
+    play('club_hit', 1);
+    play('club_hit', 1.01); // too soon after the last one: dropped
+    play('club_hit', 1.2);
+    play('club_hit', 1.4); // two still sounding (fakes never end): voice cap
+    assert.equal(bank.started.club_hit, 2);
+    assert.equal(bank.counts.club_hit, 4, 'every cue is still counted');
+    const gains = ctx.gains.filter((g) => g.gain.value === 0.7);
+    assert.equal(gains.length, 2, 'played at the cue volume');
+    play('unit_hurt', 2); // no files: silent, no error
+    assert.equal(bank.started.unit_hurt, undefined);
+  });
+
+  it('no effect files are configured yet (so nothing 404s)', () => {
+    for (const def of Object.values(SFX)) assert.deepEqual(def.files, []);
   });
 });

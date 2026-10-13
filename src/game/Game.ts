@@ -1,6 +1,6 @@
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import { AudioMixer } from '../audio/AudioMixer';
-import { bindAudio, MixerSoundBank } from '../audio/AudioHooks';
+import { bindAudio, MixerSoundBank, swingCue } from '../audio/AudioHooks';
 import { MusicPlayer } from '../audio/MusicPlayer';
 import { GAME } from '../config/game';
 import type { EnqueueResult } from '../sim/types';
@@ -61,7 +61,9 @@ export class Game {
     this.world = startInMenu ? this.attractWorld() : new World({ difficulty });
     this.renderer = new GameRenderer(canvasHost, assets, this.bus);
     this.renderer.setWorld(this.world);
-    bindAudio(this.bus, this.sound);
+    bindAudio(this.bus, this.sound, (id) => this.world.units.find((u) => u.id === id)?.def.id);
+    this.renderer.onSwing = (u) => this.sound.play(swingCue(u.def.id));
+    void this.sound.loadAll();
 
     this.hud = new Hud(hudHost, this.world.content, {
       onEnqueue: (id) => {
