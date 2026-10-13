@@ -9,7 +9,7 @@ import { CameraRig } from './CameraRig';
 import { buildEnvironment, type Environment } from './environment';
 import { PostFx } from './post';
 import { ProjectileRenderer } from './ProjectileRenderer';
-import { UnitView } from './UnitView';
+import { combatTarget, UnitView } from './UnitView';
 
 export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
 
@@ -90,6 +90,8 @@ export class GameRenderer {
     if (!world) return;
     this.rig.update(dt, world.units.length > 0 ? world.frontlineX : null);
     this.syncViews(world);
+    const drawnAt = (u: Unit) => this.views.get(u.id)?.root.position;
+    for (const view of this.views.values()) view.setTarget(combatTarget(world, view.unit, drawnAt));
     for (const view of this.views.values()) view.update(frozen ? 0 : dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);

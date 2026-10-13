@@ -3,7 +3,8 @@ import type { ClipName } from '../assets/contract';
 import { GAME } from '../config/game';
 import { createRng } from '../sim/rng';
 import type { Unit } from '../sim/Unit';
-import { teamDir } from '../sim/types';
+import { opposite, teamDir } from '../sim/types';
+import type { World } from '../sim/World';
 import { lowestPoint } from './grounding';
 import { pathCenterZ, pathSlope, terrainHeight } from './terrain';
 import { ModelAnimator } from './ModelAnimator';
@@ -34,6 +35,32 @@ export const MELEE_VISUALS = {
 };
 /** Each fighter steps this far forward from its sim front (half of the excess gap). */
 export const MELEE_STEP = Math.max(0, (GAME.minUnitGap - MELEE_VISUALS.gap) / 2);
+
+/** Turning toward a target: max rate (rad/s), and the distance below which it holds its heading. */
+export const FACING = { turnRate: 7, holdWithin: 0.3 };
+
+/** Smallest signed angle from a to b (radians). */
+function angleTo(a: number, b: number): number {
+  return Math.atan2(Math.sin(b - a), Math.cos(b - a));
+}
+
+/** Model yaw that turns its +X forward axis toward (dx, dz) (three.js: +yaw turns +X toward -Z). */
+export function yawToward(dx: number, dz: number): number {
+  return Math.atan2(-dz, dx);
+}
+
+/**
+ * Where an attacking unit should look: the enemy team's front unit (the one the sim makes it
+ * fight), or the enemy base when no enemy unit is left. `drawnAt` gives a unit's drawn position
+ * (its view), falling back to the sim lane position. Null when the unit is not attacking.
+ */
+export function combatTarget(world: World, unit: Unit, drawnAt: (u: Unit) => { x: number; z: number } | undefined): { x: number; z: number } | null {
+  if (unit.state !== 'attacking') return null;
+  const foes = world.alive[opposite(unit.team)];
+  const front = unit.team === 'player' ? foes[0] : foes[foes.length - 1];
+  if (front) return drawnAt(front) ?? { x: front.x, z: front.z };
+  return { x: world.bases[opposite(unit.team)].x, z: 0 };
+}
 
 export interface UnitViewOptions {
   variants?: ReadonlyMap<ClipName, readonly AnimationClip[]>;
@@ -69,6 +96,9 @@ export class UnitView {
   private swingRate = 1;
   /** True until the swing for the current melee timer cycle has started. */
   private swingArmed = true;
+  /** Current heading (model yaw) and where to look while fighting (null: face the way it walks). */
+  private yaw = 0;
+  private target: { x: number; z: number } | null = null;
   /** Present only for models that ship contract clips. */
   readonly animator: ModelAnimator | null;
 
@@ -102,6 +132,8 @@ export class UnitView {
     this.engage = 0;
     this.knock = 0;
     this.swingArmed = true;
+    this.target = null;
+    this.yaw = Number.NaN; // snap to the first heading
     // Stable per-unit variation (seeded by the unit id): units of one type never move in lockstep.
     const rng = createRng(unit.id * 9973 + 17);
     const spread = (j: number): number => 1 + (rng() * 2 - 1) * j;
@@ -126,6 +158,16 @@ export class UnitView {
     this.animator?.playOnce('hit');
   }
 
+  /** Look at this point while attacking (set each frame by the renderer; null when not fighting). */
+  setTarget(target: { x: number; z: number } | null): void {
+    this.target = target;
+  }
+
+  /** Current model yaw (radians). */
+  get heading(): number {
+    return this.yaw;
+  }
+
   /** Lane x where the model is drawn: its visual front on the sim front, plus melee step/knock. */
   drawX(): number {
     const u = this.unit;
@@ -146,7 +188,7 @@ export class UnitView {
     const z = u.z + pathCenterZ(x);
     const ground = terrainHeight(x, z);
     this.root.position.set(x, ground, z);
-    if (u.state !== 'dead') this.model.rotation.y = (dir === 1 ? 0 : Math.PI) - Math.atan(pathSlope(x));
+    this.turn(dt, x, z, dir);
     this.phase += dt * 9;
 
     if (this.animator) {
@@ -173,6 +215,32 @@ export class UnitView {
       this.fill.position.x = -(BAR_W / 2) * (1 - frac);
       if (camera) this.bar.quaternion.copy(camera.quaternion);
     }
+  }
+
+  /**
+   * Heading: along the footpath while moving; toward the target while attacking (so fighters face
+   * each other even when the lane's sideways spread puts them off-axis, e.g. beside a cave).
+   * Turns at FACING.turnRate, never snaps (except the first frame) and holds its heading when the
+   * target is too close to define a direction, so it cannot oscillate. Corpses keep their heading.
+   */
+  private turn(dt: number, x: number, z: number, dir: 1 | -1): void {
+    if (this.unit.state === 'dead') return;
+    let want = (dir === 1 ? 0 : Math.PI) - Math.atan(pathSlope(x));
+    if (this.target) {
+      const dx = this.target.x - x;
+      const dz = this.target.z - z;
+      // Never turn to face backwards: the sim's target is always ahead along the lane.
+      if (Math.hypot(dx, dz) > FACING.holdWithin && dx * dir > 0) want = yawToward(dx, dz);
+      else if (Math.hypot(dx, dz) <= FACING.holdWithin && !Number.isNaN(this.yaw)) want = this.yaw;
+    }
+    if (Number.isNaN(this.yaw) || dt <= 0) {
+      if (Number.isNaN(this.yaw)) this.yaw = want;
+    } else {
+      const step = FACING.turnRate * dt;
+      const d = angleTo(this.yaw, want);
+      this.yaw += Math.max(-step, Math.min(step, d));
+    }
+    this.model.rotation.y = this.yaw;
   }
 
   /**
