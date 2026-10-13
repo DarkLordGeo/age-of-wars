@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { AnimationMixer, Vector3, type Material, type Mesh, type Object3D, type SkinnedMesh } from 'three';
+import { AnimationMixer, Group, Vector3, type Material, type Mesh, type Object3D, type SkinnedMesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { AssetLibrary } from '../src/assets/AssetLibrary';
+import { ModelAnimator } from '../src/render/ModelAnimator';
 import { clipVariants, indexClips, MAX_UNIT_TRIANGLES, TEAM_COLOR_MATERIAL, validateModel } from '../src/assets/contract';
 import { GAME } from '../src/config/game';
 import { UNITS } from '../src/config/units';
@@ -151,5 +153,47 @@ describe('dino.glb (Rodin dinosaur d + seated rider, one set of clips)', () => {
       const tracks = clips.get(name)!.tracks.map((t) => t.name.split('.')[0]!);
       assert.ok(tracks.some((n) => n.startsWith('Head')) && tracks.some((n) => n === 'HandR'), `${name} drives dinosaur and rider`);
     }
+  });
+});
+
+describe('slingshot.glb (same Mixamo caveman, slingshot, Run Forward, layered shot)', () => {
+  it('meets the unit contract and carries the slingshot skinned to the left fist', async () => {
+    const { scene, clips } = await load('/models/slingshot.glb');
+    assert.deepEqual(validateModel(scene, clips, { expectedHeight: 1.8, requireClips: true }), []);
+    assert.ok(triangles(scene) <= MAX_UNIT_TRIANGLES);
+    const sling = scene.getObjectByName('Slingshot');
+    assert.ok(sling && skinned(sling), 'slingshot skinned (a multi-material mesh loads as a group of skinned parts)');
+    assert.ok(materials(scene).some((m) => m.name === TEAM_COLOR_MATERIAL));
+    assert.ok(clips.get('attack')!.duration < UNITS.slingshot!.ranged!.intervalStanding, 'shot fits between shots');
+  });
+
+  it('the shot layers over the run: legs keep running, arms aim, then the full run resumes', async () => {
+    const lib = new AssetLibrary();
+    lib.register('unit.slingshot', { placeholder: () => new Group(), expectedHeight: 1.8, partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ } });
+    const buf = readFileSync(join(PUBLIC, '/models/slingshot.glb'));
+    lib.registerLoaded('unit.slingshot', (await new GLTFLoader().parseAsync(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '')) as never);
+    const model = lib.instantiate('unit.slingshot', 1);
+    const anim = new ModelAnimator(model, lib.clipsFor('unit.slingshot'), lib.clipVariantsFor('unit.slingshot'), () => 0.5);
+    const leg = model.getObjectByName('mixamorigLeftUpLeg')!;
+    const arm = model.getObjectByName('mixamorigLeftArm')!;
+    anim.playLoop('walk');
+    anim.update(0.2);
+    assert.equal(anim.playOnce('attack'), true);
+    assert.equal(anim.playing, 'attack');
+    assert.equal(anim.layered, true, 'upper-body shot layered over the run');
+    const legAngles: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      anim.update(0.08);
+      legAngles.push(leg.quaternion.x);
+    }
+    assert.ok(Math.max(...legAngles) - Math.min(...legAngles) > 0.05, 'legs keep cycling while shooting');
+    model.updateMatrixWorld(true);
+    const a = arm.getWorldPosition(new Vector3());
+    const f = model.getObjectByName('mixamorigLeftForeArm')!.getWorldPosition(new Vector3());
+    const d = f.sub(a).normalize();
+    assert.ok(d.x > 0.85, `left arm aims forward (+X) at the release: ${d.toArray().map((v) => v.toFixed(2))} t=${anim.time.toFixed(2)}`);
+    for (let i = 0; i < 20; i++) anim.update(0.1);
+    assert.equal(anim.playing, 'walk');
+    assert.equal(anim.layered, false, 'full run back after the shot');
   });
 });

@@ -1,6 +1,5 @@
 import { Group } from 'three';
 import { AssetLibrary } from './AssetLibrary';
-import { decorateBiped, prepareBiped } from '../render/age1/autorig';
 import { createDinoRider } from '../render/age1/dino';
 import { createEggAutomatic, createPrimitiveCatapult, createRockSlingshot } from '../render/age1/turrets';
 import { createSettlement } from '../render/age1/settlement';
@@ -22,14 +21,15 @@ export function createAssetLibrary(): AssetLibrary {
     expectedHeight: 1.8,
     strike: 0.3, // attack clip: the club comes down ~9 frames in (Double Dagger Stab 26-46)
   });
-  // Slingshot Man: Rodin model baked to ~14k tris with vertex colours (assets_src/rodin). It ships
-  // without a skeleton, so it is auto-rigged on load (legs + torso) and animated procedurally.
+  // Slingshot Man: the same Mixamo-rigged caveman with a slingshot in the left fist, the Run
+  // Forward run, and a keyed upper-body shot layered over the running/idling legs
+  // (assets_src/rodin/mixamo_build.py prop=sling, attack=@slingfire).
   lib.register('unit.slingshot', {
-    url: '/models/caveman_slingshot.glb',
+    url: '/models/slingshot.glb',
     placeholder: createArcherPlaceholder,
     expectedHeight: 1.8,
-    prepare: (scene) => prepareBiped(scene, { height: 1.8 }),
-    decorate: (m, tint) => decorateBiped(m, tint, { swing: 0.25 }),
+    strike: 0.53, // the pouch is released at frame 16 of the shot
+    partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ },
   });
   // Dino Rider: procedural dinosaur; the rider is the rigged Rodin caveman (model g, seated pose
   // and spear) when it loads, else the procedural rider.

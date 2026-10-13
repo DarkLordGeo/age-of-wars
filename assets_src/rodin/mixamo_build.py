@@ -24,8 +24,15 @@ OUT, RIGGED, PBR = args[0], args[1], args[2]
 import re
 SPEC = re.compile(r'^(?P<path>.+?)(?::(?P<a>\d+)-(?P<b>\d+))?(?P<flags>[~!]*)(?:@(?P<rate>[\d.]+))?$')
 CLIPS = []
+PROP = 'club'
 for a in args[3:]:
     name, spec = a.split('=', 1)
+    if name == 'prop':  # prop=club (right fist) or prop=sling (slingshot in the left fist)
+        PROP = spec
+        continue
+    if spec.startswith('@'):  # generated clip, e.g. attack=@slingfire
+        CLIPS.append((name, spec, None, 1.0, ''))
+        continue
     m = SPEC.match(spec)
     rng = (int(m['a']), int(m['b'])) if m['a'] else None
     CLIPS.append((name, m['path'], rng, float(m['rate'] or 1.0), m['flags']))
@@ -118,7 +125,81 @@ def trim(act, f0, f1, rate, pingpong=False, in_place=False):
         fc.update()
 
 
+UPPER = ('Spine', 'Neck', 'Head', 'Shoulder', 'Arm', 'Hand')
+
+
+def is_upper(bone):
+    return any(k in bone for k in UPPER)
+
+
+def aim(bone, d_world):
+    """Swing a pose bone (minimal rotation about its head) so it points along d_world."""
+    pb = arm.pose.bones['mixamorig:' + bone]
+    m = pb.matrix.copy()
+    d = (arm.matrix_world.to_3x3().inverted() @ Vector(d_world)).normalized()
+    cur = (m.to_3x3() @ Vector((0, 1, 0))).normalized()
+    r = cur.rotation_difference(d).to_matrix().to_4x4()
+    t = Matrix.Translation(m.translation)
+    pb.matrix = t @ r @ t.inverted() @ m
+    bpy.context.view_layer.update()
+
+
+def slingfire(name):
+    """Keyed slingshot shot on the upper body only (the legs keep whatever loop is playing):
+    raise the fork in the left fist, draw the pouch back to the cheek, release at frame 16
+    (0.53 s, the manifest's `strike`), follow through and settle back to the stance.
+    Directions are world space with the character facing -Y (its left is +X)."""
+    stance = bpy.data.actions['idle']
+    ad = arm.animation_data
+    for tr in ad.nla_tracks:
+        tr.mute = True
+    draw = {'LeftArm': (-0.1, -1, 0.12), 'LeftForeArm': (-0.05, -1, 0.12), 'LeftHand': (0, -1, 0.08),
+            'RightArm': (-0.6, 0.5, -0.1), 'RightForeArm': (0.82, -0.56, 0.17), 'RightHand': (0.4, -0.9, 0.1)}
+    release = dict(draw, RightForeArm=(0.35, -0.93, 0.1), RightHand=(0.05, -1, 0.0))
+    follow = dict(draw, LeftArm=(0.05, -1, -0.15), LeftForeArm=(0.05, -1, -0.1), RightArm=(-0.5, -0.3, -0.5),
+                  RightForeArm=(0.2, -0.9, -0.3), RightHand=(0.1, -1, -0.2))
+    timeline = [(0, None), (8, draw), (14, draw), (16, release), (19, follow), (27, None)]
+    poses = []
+    for frame, aims in timeline:
+        ad.action = stance
+        scene.frame_set(0)
+        bpy.context.view_layer.update()
+        if aims:
+            for b in ('LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand'):
+                aim(b, aims[b])
+        poses.append((frame, {pb.name: pb.rotation_quaternion.copy() for pb in arm.pose.bones if is_upper(pb.name)}))
+    ad.action = None
+    # Build the clip as a copy of the (imported) stance action, so it binds and exports like every
+    # other Mixamo clip; then overwrite the upper-body rotations with the keyed shot. A brand-new
+    # action keyed in place exported with wrong arm rotations (Blender 5 slotted actions).
+    act = stance.copy()
+    act.name = name
+    act.use_fake_user = True
+    last = timeline[-1][0]
+    for fc in fcurves(act):
+        bone = fc.data_path.split('"')[1] if fc.data_path.startswith('pose.bones["') else ''
+        keyed = fc.data_path.endswith('rotation_quaternion') and bone in poses[0][1]
+        pts = [(f, q[bone][fc.array_index]) for f, q in poses] if keyed else [(0, fc.keyframe_points[0].co.y), (last, fc.keyframe_points[0].co.y)]
+        fc.keyframe_points.clear()
+        fc.keyframe_points.add(len(pts))
+        for k, (x, y) in zip(fc.keyframe_points, pts):
+            k.co = (x, y)
+            k.interpolation = 'BEZIER'
+        fc.update()
+    for tr in ad.nla_tracks:
+        tr.mute = False
+    return act
+
+
 for name, path, rng, rate, flags in CLIPS:
+    if path == '@slingfire':
+        act = slingfire(name)
+        tr = arm.animation_data.nla_tracks.new()
+        tr.name = name
+        st = tr.strips.new(name, 0, act)
+        st.name = name
+        print(f'CLIP {name}: generated slingshot shot (upper body, 0.90s, release 0.53s)')
+        continue
     src_act = action_from(path)
     act = src_act.copy()
     act.name = name
@@ -195,31 +276,74 @@ bpy.ops.object.transform_apply(scale=True)
 belt.data.materials.append(material('TeamColor', (1, 1, 1), 0.85))
 parent_to_bone(belt, 'mixamorig:Hips')
 
+def fist(side):
+    h0, h1 = bone_world(f'mixamorig:{side}Hand')
+    mid = f'mixamorig:{side}HandMiddle1'
+    return h0.lerp(h1, 0.9) if mid not in pose else h0.lerp(bone_world(mid)[0], 0.55)
+
+
+def slingshot():
+    """Forked stick (wood) with a leather band, grip at the origin. In the T-pose the handle is
+    vertical and the prongs spread along Y, so with the left arm aimed forward (-Y) the fork
+    stands upright with its prongs across the line of fire."""
+    parts = []
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.015, depth=0.17, location=(0, 0, 0.035))
+    parts.append(bpy.context.active_object)
+    for sy in (1, -1):
+        bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.012, depth=0.12, location=(0, sy * 0.03, 0.165))
+        prong = bpy.context.active_object
+        prong.rotation_euler = (math.radians(-22 * sy), 0, 0)
+        parts.append(prong)
+    for o in parts:
+        select_only(o)
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    wood = material('SlingWood', (1, 1, 1), 0.9, REPO + 'public/textures/age1/log.jpg')
+    for o in parts:
+        o.data.materials.append(wood)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.215))
+    band = bpy.context.active_object
+    band.scale = (0.012, 0.12, 0.008)
+    select_only(band)
+    bpy.ops.object.transform_apply(scale=True)
+    band.data.materials.append(material('SlingBand', (0.33, 0.2, 0.11), 0.8))
+    select_only(*parts, band)
+    bpy.ops.object.join()
+    sl = bpy.context.active_object
+    sl.name = 'Slingshot'
+    return sl
+
+
+if PROP == 'sling':
+    club = slingshot()
+    club.location = fist('Left') + Vector((0, 0, -0.04))
+    parent_to_bone(club, 'mixamorig:LeftHand')
+else:
+    club = None
+
 # Club: grip in the right fist (between the hand bone and the middle-finger base).
-bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=0.026, radius2=0.062, depth=0.72, location=(0, 0, 0))
-club = bpy.context.active_object
-club.name = 'Club'
-club.rotation_euler = (math.radians(90), 0, 0)
-club.location = (0, -0.36 + 0.09, 0)
-select_only(club)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-rnd = random.Random(7)
-for v in club.data.vertices:
-    t = (-v.co.y + 0.09) / 0.72
-    if t > 0.55:
-        r = Vector((v.co.x, 0, v.co.z))
-        if r.length > 1e-4:
-            v.co += r.normalized() * rnd.uniform(0.0, 0.02) * t
-# Mixamo's fist: in the T-pose the club must point backwards (+Y) so that it extends forward
-# and down past the fist in overhead strikes (checked on the Double Dagger Stab swing).
-for v in club.data.vertices:
-    v.co.x, v.co.y = -v.co.x, -v.co.y
-bpy.ops.object.shade_smooth()
-club.data.materials.append(material('ClubWood', (1, 1, 1), 0.9, REPO + 'public/textures/age1/bark.jpg'))
-h0, h1 = bone_world('mixamorig:RightHand')
-fist = h0.lerp(h1, 0.9) if 'mixamorig:RightHandMiddle1' not in pose else h0.lerp(bone_world('mixamorig:RightHandMiddle1')[0], 0.55)
-club.location = fist + Vector((0, 0, -0.015))
-parent_to_bone(club, 'mixamorig:RightHand')
+if PROP == 'club':
+    bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=0.026, radius2=0.062, depth=0.72, location=(0, 0, 0))
+    club = bpy.context.active_object
+    club.name = 'Club'
+    club.rotation_euler = (math.radians(90), 0, 0)
+    club.location = (0, -0.36 + 0.09, 0)
+    select_only(club)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    rnd = random.Random(7)
+    for v in club.data.vertices:
+        t = (-v.co.y + 0.09) / 0.72
+        if t > 0.55:
+            r = Vector((v.co.x, 0, v.co.z))
+            if r.length > 1e-4:
+                v.co += r.normalized() * rnd.uniform(0.0, 0.02) * t
+    # Mixamo's fist: in the T-pose the club must point backwards (+Y) so that it extends forward
+    # and down past the fist in overhead strikes (checked on the Double Dagger Stab swing).
+    for v in club.data.vertices:
+        v.co.x, v.co.y = -v.co.x, -v.co.y
+    bpy.ops.object.shade_smooth()
+    club.data.materials.append(material('ClubWood', (1, 1, 1), 0.9, REPO + 'public/textures/age1/bark.jpg'))
+    club.location = fist('Right') + Vector((0, 0, -0.015))
+    parent_to_bone(club, 'mixamorig:RightHand')
 
 # ------------------------------------------------------------------ export
 arm.rotation_mode = 'XYZ'

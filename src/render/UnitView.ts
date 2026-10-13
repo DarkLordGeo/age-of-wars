@@ -176,22 +176,25 @@ export class UnitView {
   }
 
   /**
-   * Start the melee swing `strike / swingRate` seconds before the sim's next hit, so the blow
-   * lands on the damage tick. Visual only: the sim's timers and damage are untouched.
+   * Start the attack clip `strike / swingRate` seconds before the sim's next melee hit or
+   * ranged shot, so the blow lands / the stone leaves on that tick. Visual only: the sim's
+   * timers and damage are untouched.
    */
   private syncSwing(): void {
     const u = this.unit;
     const strike = this.opts.strike;
-    if (strike === undefined || !this.animator || u.state === 'dead' || u.meleeTimer === null) {
+    const melee = u.meleeTimer !== null;
+    const timer = melee ? u.meleeTimer : u.def.ranged ? u.rangedTimer : null;
+    if (strike === undefined || !this.animator || u.state === 'dead' || timer === null) {
       this.swingArmed = true;
       return;
     }
     const lead = strike / this.swingRate;
-    if (u.meleeTimer > lead + 1e-6) {
+    if (timer > lead + 1e-6) {
       this.swingArmed = true;
     } else if (this.swingArmed) {
       this.swingArmed = false;
-      if (this.animator.playOnce('attack')) this.opts.onSwing?.(u);
+      if (this.animator.playOnce('attack') && melee) this.opts.onSwing?.(u);
     }
   }
 

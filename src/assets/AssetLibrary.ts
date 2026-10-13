@@ -1,4 +1,4 @@
-import { type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
+import { AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { clipVariants, indexClips, TEAM_COLOR_MATERIAL, validateModel, type ClipName } from './contract';
@@ -14,8 +14,14 @@ export interface AssetSpec {
   lazy?: boolean;
   /** Adds extra parts (e.g. gear parented to a bone) to every instance of the loaded GLB. */
   decorate?: (model: Object3D, tint: number) => void;
-  /** Seconds into the GLB's attack clip where the blow lands (strike-synced melee swings). */
+  /** Seconds into the GLB's attack clip where the blow lands / the shot is released. */
   strike?: number;
+  /**
+   * Clips that should only drive some bones (matched by node name), e.g. an upper-body shot
+   * layered over the running legs. glTF exporters write every bone into every clip, so the
+   * other tracks are dropped at load.
+   */
+  partial?: Partial<Record<ClipName, RegExp>>;
   /** Runs once on the loaded GLB scene before it is used (e.g. auto-rigging a static model). */
   prepare?: (scene: Object3D) => Object3D;
 }
@@ -83,14 +89,15 @@ export class AssetLibrary {
       o.receiveShadow = true;
     });
     const scene = spec.prepare ? spec.prepare(gltf.scene) : gltf.scene;
-    const clips = indexClips(gltf.animations);
+    const animations = gltf.animations.map((clip) => partialClip(clip, spec.partial));
+    const clips = indexClips(animations);
     const problems = validateModel(scene, clips, {
       expectedHeight: spec.expectedHeight,
       // unit-style assets are animated (prepared models animate procedurally); scenery is not
       requireClips: spec.expectedHeight !== undefined && !spec.prepare,
     });
     if (problems.length) console.warn(`[assets] "${key}" does not meet the model contract:\n - ${problems.join('\n - ')}`);
-    this.loaded.set(key, { scene, clips, variants: clipVariants(gltf.animations) });
+    this.loaded.set(key, { scene, clips, variants: clipVariants(animations) });
     return problems;
   }
 
@@ -155,4 +162,15 @@ export class AssetLibrary {
     }
     return tinted;
   }
+}
+
+/** `clip` restricted to the bones its `partial` pattern matches (unchanged when none applies). */
+function partialClip(clip: AnimationClip, partial: AssetSpec['partial']): AnimationClip {
+  const key = clip.name.split('|').pop()!.trim().toLowerCase().replace(/[_.\- ]?\d+$/, '') as ClipName;
+  const pattern = partial?.[key];
+  if (!pattern) return clip;
+  const tracks = clip.tracks.filter((t) => pattern.test(t.name.slice(0, t.name.lastIndexOf('.'))));
+  const partialClip = new AnimationClip(clip.name, clip.duration, tracks);
+  partialClip.userData = { full: clip }; // the authored pose of the rest of the body (ModelAnimator)
+  return partialClip;
 }
