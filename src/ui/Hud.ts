@@ -2,6 +2,7 @@ import { GAME } from '../config/game';
 import type { Content } from '../config/schema';
 import { currentAge } from '../sim/progression';
 import type { World } from '../sim/World';
+import { evolveTip } from './evolve';
 import { ICONS } from './icons';
 
 export interface HudHandlers {
@@ -213,8 +214,7 @@ export class Hud {
   }
 
   private evolveTip(): string {
-    const need = this.world0?.xpToEvolve('player');
-    return need == null ? 'Final age reached' : `Evolve (${need} XP)`;
+    return this.world0 ? evolveTip(this.world0) : '';
   }
 
   private sellTip(slot: number): string {
