@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, Box3, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { EventBus } from '../game/EventBus';
 import type { Unit } from '../sim/Unit';
@@ -81,6 +81,10 @@ export class GameRenderer {
         this.baseViews[team].rebind(base);
       }
     }
+    // Default gameplay framing: ~2/3 of the player's cave in view (CAMERA.zoom.caveVisible).
+    const home = this.baseViews.player.root;
+    home.updateMatrixWorld(true);
+    this.rig.setFraming(new Box3().setFromObject(home.getObjectByName('CaveBase') ?? home));
     this.rig.snapTo(0);
   }
 
