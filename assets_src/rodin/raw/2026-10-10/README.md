@@ -1,6 +1,6 @@
 # Rodin exports, 2026-10-10
 
-Untouched Hyper3D Rodin downloads (`base_basic_pbr*.glb`), renamed in download order. Licence: see `docs/ASSET_LICENSES.md` (Hyper3D terms, to confirm in #2). Not served by the game (`assets_src/` is in `.vercelignore`); processed copies go to `public/models/`.
+Untouched Hyper3D Rodin downloads (`base_basic_pbr*.glb`), renamed in download order. The `.glb` files are kept on the owner's PC only (ignored by git, ~78 MB); re-export them from the Rodin workspace if they are lost. Licence: see `docs/ASSET_LICENSES.md` (Hyper3D terms, to confirm in #2). Not served by the game (`assets_src/` is in `.vercelignore`); processed copies go to `public/models/`.
 
 All are a single unrigged mesh with PBR material (3 textures), normalised to ~1.9 m on the longest axis.
 
