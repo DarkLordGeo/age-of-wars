@@ -36,6 +36,28 @@ export const ICONS = {
   trade_routes: svg('<circle cx="9" cy="10" r="6" fill="currentColor"/><circle cx="15" cy="15" r="6" fill="currentColor" opacity=".75"/>'),
 } as const;
 
+/**
+ * Gold coin for the purse (full colour, unlike the tinted ICONS): a slightly worn, beaded rim, a
+ * gradient face with a highlight, and a sun stamped into it (dark sun plus a light lip offset down
+ * and right, so it reads as engraved). The rim outline and the solid sun keep it readable at 13 px.
+ */
+export const COIN = `<svg viewBox="0 0 32 32" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="aow-coin-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset=".45" stop-color="#d9a032"/><stop offset="1" stop-color="#7d4f0c"/></linearGradient>
+<radialGradient id="aow-coin-face" cx=".36" cy=".3" r=".8"><stop offset="0" stop-color="#fff4c2"/><stop offset=".3" stop-color="#f6cf5e"/><stop offset=".72" stop-color="#e0a52c"/><stop offset="1" stop-color="#a86f14"/></radialGradient>
+<radialGradient id="aow-coin-shine" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+</defs>
+<path d="M31.4 16L31.27 18.01L30.88 19.99L30.22 21.89L29.31 23.69L28.12 25.3L26.69 26.69L25.16 27.94L23.58 29.13L21.86 30.15L19.98 30.86L18.01 31.27L16 31.4L13.99 31.27L12.01 30.88L10.11 30.23L8.3 29.34L6.63 28.22L5.15 26.85L4.01 25.2L3.05 23.48L1.96 21.82L1.15 19.98L0.73 18.01L0.6 16L0.73 13.99L1.13 12.01L1.78 10.11L2.69 8.31L3.86 6.68L5.26 5.26L6.8 4.02L8.44 2.9L10.17 1.92L12.03 1.19L13.99 0.75L16 0.6L18.01 0.73L19.99 1.12L21.89 1.77L23.69 2.67L25.27 3.91L26.61 5.39L28.08 6.73L29.32 8.31L30.23 10.11L30.88 12.01L31.27 13.99Z" fill="url(#aow-coin-rim)" stroke="#4a2e06" stroke-width=".8"/>
+<circle cx="16" cy="16" r="14" fill="none" stroke="#8a5a12" stroke-width="1.1" stroke-dasharray=".01 2.2" stroke-linecap="round" opacity=".55"/>
+<circle cx="16" cy="16" r="12.6" fill="url(#aow-coin-face)" stroke="#7a4c0e" stroke-width=".9"/>
+<path d="M27.84 20.31A12.6 12.6 0 0 1 20.31 27.84" fill="none" stroke="#fff2b8" stroke-width=".7" opacity=".6"/>
+<g transform="translate(.55 .55)" fill="#fff0b0" opacity=".6"><circle cx="16" cy="16" r="3.9"/><path d="M15.03 11.2L16 7.1L16.97 11.2ZM17.7 11.4L19.7 9.59L19.13 12.23ZM19.67 12.76L23.71 11.55L20.65 14.44ZM20.83 15.17L23.4 16L20.83 16.83ZM20.65 17.56L23.71 20.45L19.67 19.24ZM19.13 19.77L19.7 22.41L17.7 20.6ZM16.97 20.8L16 24.9L15.03 20.8ZM14.3 20.6L12.3 22.41L12.87 19.77ZM12.33 19.24L8.29 20.45L11.35 17.56ZM11.17 16.83L8.6 16L11.17 15.17ZM11.35 14.44L8.29 11.55L12.33 12.76ZM12.87 12.23L12.3 9.59L14.3 11.4Z"/></g>
+<g fill="#8a5510"><circle cx="16" cy="16" r="3.9"/><path d="M15.03 11.2L16 7.1L16.97 11.2ZM17.7 11.4L19.7 9.59L19.13 12.23ZM19.67 12.76L23.71 11.55L20.65 14.44ZM20.83 15.17L23.4 16L20.83 16.83ZM20.65 17.56L23.71 20.45L19.67 19.24ZM19.13 19.77L19.7 22.41L17.7 20.6ZM16.97 20.8L16 24.9L15.03 20.8ZM14.3 20.6L12.3 22.41L12.87 19.77ZM12.33 19.24L8.29 20.45L11.35 17.56ZM11.17 16.83L8.6 16L11.17 15.17ZM11.35 14.44L8.29 11.55L12.33 12.76ZM12.87 12.23L12.3 9.59L14.3 11.4Z"/></g>
+<circle cx="16" cy="16" r="1.7" fill="#c98d24"/>
+<ellipse cx="11.5" cy="9.5" rx="7" ry="4.2" transform="rotate(-35 11.5 9.5)" fill="url(#aow-coin-shine)"/>
+<path d="M2 10.9A14.9 14.9 0 0 1 10.9 2" fill="none" stroke="#fffbe0" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+</svg>`;
+
 export function icon(id: string): string {
   return (ICONS as Record<string, string>)[id] ?? ICONS.upgrades;
 }
