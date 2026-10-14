@@ -2,18 +2,19 @@ import type { ProjectileDef } from '../config/schema';
 import type { Team } from './types';
 
 /**
- * In-flight projectile, pooled by World (fields reset in World).
- * - Turret projectiles (`physical`) fly in a straight line and hit the first enemy unit whose
- *   body they touch; they never hit bases, and vanish after GAME.projectileLifetime.
- * - Cosmetic projectiles (the Slingshot Man's stone, whose damage is instant) arc from the
- *   shooter to a fixed point and simply land.
+ * In-flight projectile, pooled by World (fields reset in World). Every projectile is physical:
+ * it moves each step (straight for turrets, a ballistic arc under `def.gravity` for the Slingshot
+ * Man's stone) and deals its damage once, to the first enemy hitbox its path crosses (swept, so a
+ * fast shot cannot skip through a unit). A miss lands on the ground and deals nothing.
+ * Turret shots never hit bases (docs/AGE1_SPEC.md section 8); unit shots can.
  */
 export class Projectile {
   id = 0;
   def!: ProjectileDef;
   team: Team = 'player';
-  physical = true;
   damage = 0;
+  /** Unit shots can hit the enemy base; turret shots cannot. */
+  hitsBase = false;
   x = 0;
   y = 0;
   z = 0;
@@ -22,13 +23,4 @@ export class Projectile {
   vy = 0;
   vz = 0;
   age = 0;
-  // cosmetic flight
-  sx = 0;
-  sy = 0;
-  sz = 0;
-  tx = 0;
-  ty = 0;
-  tz = 0;
-  /** Seconds the cosmetic flight takes. */
-  flight = 1;
 }
