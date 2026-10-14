@@ -11,9 +11,10 @@ export const REQUIRED_CLIPS = ['idle', 'walk', 'attack', 'death'] as const;
  * long-distance gait; with it, `walk` is the walking gait for short approaches, without it
  * `walk` is the unit's only locomotion loop) and `start` (setting off from a standstill into a
  * walk, exported WITH its root travel: the game drives it by distance, see assets/startClip.ts)
- * and `warmup` (an occasional idle variation, config/idle.ts).
+ * `warmup` (an occasional idle variation, config/idle.ts) and `melee` (the hand-to-hand blow of a
+ * unit whose `attack` is a ranged shot, e.g. the Slingshot Man's fists).
  */
-export const CLIP_NAMES = [...REQUIRED_CLIPS, 'hit', 'run', 'start', 'warmup'] as const;
+export const CLIP_NAMES = [...REQUIRED_CLIPS, 'hit', 'run', 'start', 'warmup', 'melee'] as const;
 export type ClipName = (typeof CLIP_NAMES)[number];
 
 /** A material with this name is cloned and recoloured per team at instantiate time. */

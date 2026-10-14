@@ -43,6 +43,9 @@ export interface WorldOptions {
  * stops that far from the enemy's front unit, or at the enemy base edge. Every unit attacks only
  * the enemy team's FRONT unit (or the base when none is left).
  */
+/** How much further than its melee range (m) an enemy must be before a ranged unit stops fighting it hand to hand. */
+export const MELEE_EXIT_MARGIN = 0.4;
+
 /** Height (m) a unit's ranged shot leaves from (the slingshot's release point). */
 const SHOT_RELEASE_HEIGHT = 1.45;
 /** Slack (m) around a unit's body when testing projectile hits. */
@@ -415,18 +418,24 @@ export class World {
 
     // --- attack flags against the enemy front unit, or the base when none is left
     const dist = front ? (front.x - unit.x) * dir : (this.baseStop(unit.team) - unit.x) * dir;
-    const melee = dist <= def.melee.range + 1e-6;
+    // Units with a ranged attack fight hand to hand only while the enemy is close, and keep doing
+    // so until it is a little further away than that (no melee/ranged flicker at the boundary).
+    const meleeReach = def.melee.range + (def.ranged && unit.meleeTimer !== null ? MELEE_EXIT_MARGIN : 0);
+    const melee = dist <= meleeReach + 1e-6;
     const rangedReach = front ? dist - GAME.minUnitGap : dist;
     const ranged = !!def.ranged && rangedReach <= def.ranged.range + 1e-6;
 
     // --- timers (each routine starts when its flag first holds, like the original coroutines)
+    // A ranged unit stops its fist fight as soon as nobody is in reach (no blow at a distant
+    // enemy, as the original's unfinished melee routine would) and goes back to its sling.
+    if (def.ranged && !melee && unit.meleeTimer !== null) unit.meleeTimer = null;
     if (melee && unit.meleeTimer === null) unit.meleeTimer = def.melee.firstHit;
     else if (!melee && ranged && unit.rangedTimer === null) unit.rangedTimer = 0;
 
     if (unit.meleeTimer !== null) {
       unit.meleeTimer -= dt;
       if (unit.meleeTimer <= 0) {
-        if (melee || ranged) this.unitStrike(unit, 'melee', def.melee.damage);
+        if (melee) this.unitStrike(unit, 'melee', def.melee.damage);
         unit.meleeTimer = melee ? unit.meleeTimer + def.melee.interval : null;
       }
     }
@@ -685,7 +694,7 @@ export class World {
         killer.gold += reward;
         killer.xp += reward * GAME.economy.killXpMultiplier;
         this.teams[team].xp += Math.floor(reward * GAME.economy.ownLossXpMultiplier);
-        this.events.push({ type: 'death', unitId: u.id, team: u.team, killerTeam: opposite(team) });
+        this.events.push({ type: 'death', unitId: u.id, team: u.team, killerTeam: opposite(team), gold: reward });
       }
       list.length = w;
       if (removed) this.sortLane(team);

@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, Box3, PCFShadowMap, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, Box3, PCFShadowMap, Raycaster, Scene, SRGBColorSpace, Vector2, WebGLRenderer } from 'three';
 import type { AssetLibrary } from '../assets/AssetLibrary';
 import type { EventBus } from '../game/EventBus';
 import type { Unit } from '../sim/Unit';
@@ -13,6 +13,8 @@ import { landStone, StoneDebris, StoneDebrisMesh } from './StoneDebris';
 import { STONE_DEBRIS } from '../config/debris';
 import { terrainHeight } from './terrain';
 import { combatTarget, UnitView } from './UnitView';
+import { pickHovered } from './hover';
+import { bindRewardPopups, RewardPopups, RewardPopupsView } from './RewardPopups';
 
 export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
 
@@ -36,6 +38,15 @@ export class GameRenderer {
   /** Sling stones that came down stay on the field (capped, config/debris.ts). */
   readonly debris = new StoneDebris(terrainHeight);
   private readonly debrisMesh: StoneDebrisMesh;
+  /** Pointer over the battlefield (normalized device coordinates), and the unit it hovers. */
+  private readonly pointer = new Vector2();
+  private pointerIn = false;
+  private hovered: UnitView | null = null;
+  private readonly raycaster = new Raycaster();
+  /** "Coin N +" indicators where an enemy died and the player was paid. */
+  readonly rewards = new RewardPopups();
+  private readonly rewardsView: RewardPopupsView;
+  private size = { w: 1, h: 1 };
   readonly post: PostFx;
   private readonly env: Environment;
   private world: World | null = null;
@@ -59,6 +70,21 @@ export class GameRenderer {
     this.debrisMesh = new StoneDebrisMesh(this.scene, STONE_DEBRIS.max + Math.max(8, Math.ceil(STONE_DEBRIS.max * 0.1)));
     this.rig = new CameraRig();
     this.rig.attachInput(this.renderer.domElement);
+    // Hover: passive tracking only (no preventDefault), so dragging and HUD clicks are untouched.
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener('pointermove', (e) => {
+      const r = canvas.getBoundingClientRect();
+      this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      this.pointerIn = true;
+    });
+    canvas.addEventListener('pointerleave', () => (this.pointerIn = false));
+    this.rewardsView = new RewardPopupsView(host);
+    bindRewardPopups(bus, this.rewards, (id) => {
+      const v = this.views.get(id);
+      if (!v) return null;
+      const p = v.root.position;
+      return { x: p.x, y: p.y + v.unit.def.height + 0.35, z: p.z };
+    });
     this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
 
     bus.on('attack', (e) => {
@@ -79,7 +105,9 @@ export class GameRenderer {
   setWorld(world: World): void {
     for (const view of this.views.values()) this.release(view);
     this.views.clear();
+    this.setHovered(null);
     this.debris.clear();
+    this.rewards.clear();
     this.world = world;
     for (const team of TEAMS) {
       const base = world.bases[team];
@@ -105,10 +133,13 @@ export class GameRenderer {
     this.syncViews(world);
     const drawnAt = (u: Unit) => this.views.get(u.id)?.root.position;
     for (const view of this.views.values()) view.setTarget(combatTarget(world, view.unit, drawnAt));
+    this.updateHover();
     for (const view of this.views.values()) view.update(frozen ? 0 : dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
     this.debris.step(frozen ? 0 : dt);
+    this.rewards.update(frozen ? 0 : dt);
+    this.rewardsView.sync(this.rewards, this.rig.camera, this.size.w, this.size.h);
     this.debrisMesh.sync(this.debris);
     this.env.update(dt, this.rig.camera);
     this.post.render(dt);
@@ -143,6 +174,7 @@ export class GameRenderer {
         {
           variants: this.assets.clipVariantsFor(unit.def.modelKey),
           strike: this.assets.strikeTimeFor(unit.def.modelKey),
+          meleeStrike: this.assets.meleeStrikeFor(unit.def.modelKey),
           locomotion: this.assets.locomotionFor(unit.def.modelKey),
           onSwing: (u) => this.onSwing?.(u),
         },
@@ -153,7 +185,26 @@ export class GameRenderer {
     return view;
   }
 
+  /** The living unit under the pointer shows its health bar (UnitView.setHovered). */
+  private updateHover(): void {
+    let next: UnitView | null = null;
+    if (this.pointerIn) {
+      this.raycaster.setFromCamera(this.pointer, this.rig.camera);
+      const id = pickHovered(this.raycaster.ray, this.views.values());
+      next = id === null ? null : (this.views.get(id) ?? null);
+    }
+    this.setHovered(next);
+  }
+
+  private setHovered(view: UnitView | null): void {
+    if (view === this.hovered) return;
+    this.hovered?.setHovered(false);
+    view?.setHovered(true);
+    this.hovered = view;
+  }
+
   private release(view: UnitView): void {
+    if (view === this.hovered) this.setHovered(null);
     this.scene.remove(view.root);
     let list = this.freeViews.get(view.poolKey);
     if (!list) this.freeViews.set(view.poolKey, (list = []));
@@ -163,6 +214,7 @@ export class GameRenderer {
   private resize(): void {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
+    this.size = { w, h };
     this.renderer.setSize(w, h);
     this.rig.resize(w, h);
     this.post.setSize(w, h);

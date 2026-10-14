@@ -17,6 +17,8 @@ export interface AssetSpec {
   decorate?: (model: Object3D, tint: number) => void;
   /** Seconds into the GLB's attack clip where the blow lands / the shot is released. */
   strike?: number;
+  /** Seconds into the GLB's `melee` clip where the fist lands (units whose `attack` is ranged). */
+  meleeStrike?: number;
   /**
    * Clips that should only drive some bones (matched by node name), e.g. an upper-body shot
    * layered over the running legs. glTF exporters write every bone into every clip, so the
@@ -153,6 +155,11 @@ export class AssetLibrary {
     const loaded = this.loaded.get(key);
     if (!loaded) return {};
     return { gaitSpeed: this.specs.get(key)?.gaitSpeed, start: loaded.start };
+  }
+
+  /** Strike time of `key`'s `melee` clip, when its GLB is loaded and ships one. */
+  meleeStrikeFor(key: string): number | undefined {
+    return this.loaded.get(key)?.clips.has('melee') ? this.specs.get(key)?.meleeStrike : undefined;
   }
 
   /** Every variant of each clip for `key` ("death", "death_2", ...); empty for placeholders. */

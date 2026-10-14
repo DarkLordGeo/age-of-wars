@@ -7,7 +7,7 @@ const FADE = 0.12;
  * One-shots only interrupt one-shots of equal or lower priority: a flinch never cuts a swing
  * short, and nothing interrupts a death.
  */
-const PRIORITY: Partial<Record<ClipName, number>> = { warmup: 0, hit: 1, attack: 2, death: 3 };
+const PRIORITY: Partial<Record<ClipName, number>> = { warmup: 0, hit: 1, attack: 2, melee: 2, death: 3 };
 
 /**
  * Idle variations: full-body one-shots that give way to everything. Any one-shot overrides them

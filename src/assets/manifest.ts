@@ -35,6 +35,7 @@ export function createAssetLibrary(): AssetLibrary {
     // 27-frame cycle at 1.08x (25 frames) = 3.598 m/s.
     gaitSpeed: { walk: 1.5, run: 3.598 },
     strike: 0.53, // the pouch is released at frame 16 of the shot
+    meleeStrike: 0.45, // Mixamo "Fist Fight A" 16-40 (right cross): the fist is furthest forward at 0.45 s
     partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ },
   });
   // Dino Rider: procedural dinosaur; the rider is the rigged Rodin caveman (model g, seated pose
