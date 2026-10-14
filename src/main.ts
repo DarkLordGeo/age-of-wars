@@ -1,9 +1,13 @@
+import { inject } from '@vercel/analytics';
 import { createAssetLibrary } from './assets/manifest';
 import { CONTENT } from './config/content';
 import { GAME } from './config/game';
 import { Game } from './game/Game';
 
 async function boot(): Promise<void> {
+  // Initialize Vercel Web Analytics
+  inject();
+
   const assets = createAssetLibrary();
   await assets.preload();
 
