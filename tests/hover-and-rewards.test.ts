@@ -49,7 +49,7 @@ describe('hover health bars', () => {
     assert.ok(Math.abs(v.barState.frac - 0.4) < 1e-9, 'damage shows on the next frame');
     v.setHovered(false);
     v.update(1 / 60, null);
-    assert.deepEqual({ visible: v.barState.visible, red: v.barState.red }, { visible: true, red: false }, 'damaged units keep their green bar');
+    assert.deepEqual({ visible: v.barState.visible, red: v.barState.red }, { visible: true, red: true }, 'damaged units show a red bar too');
     u.health = u.maxHealth;
     v.update(1 / 60, null);
     assert.equal(v.barState.visible, false, 'pointer gone and healthy: hidden');

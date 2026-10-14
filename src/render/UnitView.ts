@@ -17,9 +17,9 @@ import { excludeFromAO } from './post';
 
 const LUNGE_TIME = 0.32;
 const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6 });
-const barFg = new MeshBasicMaterial({ color: 0x4ade80, depthTest: false });
-/** Fill of the bar of the unit under the pointer: red, readable on grass, dirt and rock. */
-const barHover = new MeshBasicMaterial({ color: 0xe53935, depthTest: false });
+/** Health bar fill: red for every unit, readable on grass, dirt and rock. */
+const BAR_RED = 0xe53935;
+const barFg = new MeshBasicMaterial({ color: BAR_RED, depthTest: false });
 /** The hovered unit's bar is drawn a little larger. */
 const HOVER_BAR_SCALE = 1.2;
 const barGeo = new PlaneGeometry(1, 1);
@@ -280,9 +280,8 @@ export class UnitView {
     }
 
     const frac = Math.min(1, Math.max(0, u.health / u.maxHealth)); // (also when health exceeds max)
-    // Shown when damaged (green), and always for the unit under the pointer (red, larger).
+    // Shown when damaged, and always for the unit under the pointer (drawn a little larger).
     this.bar.visible = this.hovered || frac < 1;
-    this.fill.material = this.hovered ? barHover : barFg;
     this.bar.scale.setScalar(this.hovered ? HOVER_BAR_SCALE : 1);
     if (this.bar.visible) {
       this.fill.scale.set(BAR_W * frac, BAR_H, 1);
@@ -412,7 +411,7 @@ export class UnitView {
 
   /** What its health bar shows now (for tests and debugging). */
   get barState(): { visible: boolean; red: boolean; frac: number } {
-    return { visible: this.bar.visible, red: this.fill.material === barHover, frac: this.fill.scale.x / BAR_W };
+    return { visible: this.bar.visible, red: (this.fill.material as MeshBasicMaterial).color.getHex() === BAR_RED, frac: this.fill.scale.x / BAR_W };
   }
 
   get id(): number {
