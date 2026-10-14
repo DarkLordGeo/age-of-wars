@@ -88,7 +88,7 @@ export class GameRenderer {
     this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
 
     bus.on('attack', (e) => {
-      if (e.sourceKind === 'unit') this.views.get(e.sourceId)?.triggerAttack();
+      if (e.sourceKind === 'unit') this.views.get(e.sourceId)?.triggerAttack(e.mode);
       else this.baseViews[e.team]?.triggerRecoil(e.sourceId);
     });
     bus.on('hit', (e) => {

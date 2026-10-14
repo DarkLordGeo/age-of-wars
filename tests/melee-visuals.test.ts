@@ -35,7 +35,7 @@ function run(w: World, views: Map<number, UnitView>, seconds: number, onTick?: (
     const events: SimEvent[] = [];
     w.drainEvents((e) => events.push(e));
     for (const e of events) {
-      if (e.type === 'attack' && e.sourceKind === 'unit') views.get(e.sourceId)?.triggerAttack();
+      if (e.type === 'attack' && e.sourceKind === 'unit') views.get(e.sourceId)?.triggerAttack(e.mode);
       if (e.type === 'hit' && e.targetKind === 'unit') views.get(e.targetId)?.triggerHit();
     }
     for (const v of views.values()) v.update(DT, null);
