@@ -116,6 +116,39 @@ describe('shot trajectories (sim)', () => {
   });
 });
 
+describe('accuracy against a stream of walking enemies (sim)', () => {
+  it('stones only miss targets that died while they were in flight (no lost accuracy from the variation)', () => {
+    let shots = 0;
+    let liveMisses = 0;
+    for (const seed of [1, 2, 3]) {
+      const w = makeWorld({ seed });
+      for (let i = 0; i < 3; i++) w.spawnUnit('player', 'slingshot', -20 - i * 2.5).health = 1e6;
+      const aimedAt = new Map<number, number>();
+      let next = 0;
+      for (let i = 0; i < Math.round(40 / DT); i++) {
+        if (i >= next && w.alive.enemy.length < 3) {
+          w.spawnUnit('enemy', 'clubman', 10);
+          next = i + 90;
+        }
+        w.step(DT);
+        w.drainEvents((e) => {
+          if (e.type === 'projectileFired' && e.team === 'player') {
+            shots++;
+            if (w.alive.enemy[0]) aimedAt.set(e.projectileId, w.alive.enemy[0].id);
+          }
+          if (e.type === 'projectileImpact' && e.defId === 'sling_stone' && !e.hit) {
+            const target = w.units.find((u) => u.id === aimedAt.get(e.projectileId));
+            if (target?.alive) liveMisses++;
+          }
+        });
+      }
+    }
+    assert.ok(shots > 200, `${shots} shots`);
+    // A walking target that brakes to a stop mid-flight can still dodge a led stone, rarely.
+    assert.ok(liveMisses <= shots * 0.01, `${liveMisses} of ${shots} stones missed a target that was still alive`);
+  });
+});
+
 describe('stone-on-stone collisions', () => {
   const space = { ...STONE_DEBRIS, gravity: 0 }; // isolate the collision response
 

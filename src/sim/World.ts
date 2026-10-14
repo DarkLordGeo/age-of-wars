@@ -545,11 +545,15 @@ export class World {
     let tx: number, ty: number, tz: number;
     if (front) {
       const fdir = teamDir(front.team);
-      tx = front.centerX(fdir) + (r() - 0.5) * 0.5 * front.def.length;
+      const aimX = front.centerX(fdir) + (r() - 0.5) * 0.5 * front.def.length;
       ty = front.def.height * (0.35 + 0.35 * r());
       tz = front.z + (r() - 0.5) * 0.3;
-      // Lead a walking target by its actual speed (units accelerate and brake).
-      if (front.moving) tx += fdir * front.vel * (Math.abs(tx - p.x) / speed);
+      // Lead a walking target by its actual speed (units accelerate and brake): where it will be
+      // after the flight, the flight time itself depending on that point (a few fixed-point steps
+      // converge, the target being much slower than the stone).
+      const lead = front.moving ? fdir * front.vel : 0;
+      tx = aimX;
+      for (let k = 0; k < 3; k++) tx = aimX + lead * (Math.hypot(tx - p.x, tz - p.z) / speed);
     } else {
       tx = this.baseStop(unit.team) + teamDir(unit.team) * (0.3 + 0.5 * r());
       ty = GAME.baseAimHeight * (0.7 + 0.6 * r());
