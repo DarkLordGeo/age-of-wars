@@ -101,7 +101,8 @@ function setOff(lib: AssetLibrary, room: number, locomotion: Locomotion, seconds
     if (r.j[f]![0]!.y > floor[r.clip]! + 0.04 || p.j[f]![0]!.y > floor[r.clip]! + 0.04) continue;
     // Forward ground slip of the planted joint (ankle or ball, whichever is stiller): its motion in
     // the model frame plus the model's own motion.
-    const slipOf = (k: number) => r.j[f]![k]!.x - p.j[f]![k]!.x + r.root.x;
+    // Local foot motion is in model units: times the model's scale (per-unit body size) = metres.
+    const slipOf = (k: number) => (r.j[f]![k]!.x - p.j[f]![k]!.x) * u.bodyScale + r.root.x;
     const k = Math.abs(slipOf(0)) < Math.abs(slipOf(1)) ? 0 : 1;
     const s = (acc[r.clip] ??= { d: 0, t: 0, travel: 0, all: [] });
     s.all.push(slipOf(k) / DT);
@@ -204,6 +205,6 @@ describe('Start Walking -> Walking (Clubman)', () => {
     const u = w.spawnUnit('player', 'clubman', -lead.def.length - GAME.minUnitGap - 2.2);
     for (let i = 0; i < 30; i++) w.step(DT);
     assert.equal(u.gait, 'walk');
-    assert.ok(Math.abs(u.vel - 30 * DT * physicsOf('clubman').walk!.accel) < 1e-9, `vel ${u.vel}`);
+    assert.ok(Math.abs(u.vel - 30 * DT * physicsOf('clubman').walk!.accel * u.accelScale) < 1e-9, `vel ${u.vel}`);
   });
 });

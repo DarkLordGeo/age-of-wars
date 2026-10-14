@@ -1,4 +1,4 @@
-import { Box3, Group, Mesh, MeshBasicMaterial, PlaneGeometry, type AnimationClip, type Camera, type Object3D } from 'three';
+import { Box3, Group, Mesh, MeshBasicMaterial, PlaneGeometry, type AnimationClip, type Camera, type Object3D, type Vector3 } from 'three';
 import type { Locomotion } from '../assets/AssetLibrary';
 import type { ClipName } from '../assets/contract';
 import { handoffAt, startSpeedAt, startTimeAt, type GaitLoop } from '../assets/startClip';
@@ -90,7 +90,8 @@ export function gaitLoop(
   if (!unit.moving) return { clip: 'idle', speed: 1 };
   const walking = hasRun && unit.gait === 'walk';
   const clip = hasRun && !walking ? 'run' : 'walk';
-  const ref = authored[clip] ?? (walking ? (physicsOf(unit.def.id).walk?.speed ?? unit.def.speed) : unit.def.speed);
+  // A slightly taller unit (bodyScale) takes longer strides: same ground speed, slower cadence.
+  const ref = (authored[clip] ?? (walking ? (physicsOf(unit.def.id).walk?.speed ?? unit.def.speed) : unit.def.speed)) * unit.bodyScale;
   return { clip, speed: Math.min(GAIT_SPEED.max, Math.max(GAIT_SPEED.min, groundSpeed / ref)) };
 }
 
@@ -163,6 +164,8 @@ export class UnitView {
   private hovered = false;
   /** Model extents at rest (local): the box the pointer can hover. */
   private readonly body: Box3;
+  /** The model's own scale, before the unit's body-size variation. */
+  private readonly baseScale: Vector3;
 
   constructor(
     readonly poolKey: string,
@@ -173,6 +176,7 @@ export class UnitView {
     this.animator = clips.size > 0 ? new ModelAnimator(model, clips, opts.variants) : null;
     model.updateMatrixWorld(true);
     this.body = new Box3().setFromObject(model);
+    this.baseScale = model.scale.clone();
     this.reach = Math.max(0, this.body.max.x);
     this.root.add(model);
     const bg = new Mesh(barGeo, barBg);
@@ -189,6 +193,7 @@ export class UnitView {
     this.unit = unit;
     // Models are authored facing +X; mirror for the team marching toward -X.
     this.model.rotation.set(0, teamDir(unit.team) === 1 ? 0 : Math.PI, 0);
+    this.model.scale.copy(this.baseScale).multiplyScalar(unit.bodyScale); // a little taller or shorter (config/variation.ts)
     this.model.position.set(0, 0, 0);
     this.bar.position.y = unit.def.height + 0.6;
     this.lunge = 0;
@@ -386,8 +391,9 @@ export class UnitView {
         this.startDist = null; // stopped, or a one-shot took over
       } else {
         this.startDist += moved;
-        const t = startTimeAt(start, this.startDist);
-        const outrun = t > 0.2 && pathSpeed(u.vel, x) > START_MAX_RATE * Math.max(0.05, startSpeedAt(start, t));
+        // The clip's travel is for the model at its own size; a scaled body covers it scaled.
+        const t = startTimeAt(start, this.startDist / u.bodyScale);
+        const outrun = t > 0.2 && pathSpeed(u.vel, x) > START_MAX_RATE * Math.max(0.05, startSpeedAt(start, t) * u.bodyScale);
         if (t < start.exit && want.clip === 'walk' && !outrun) {
           animator.scrub(t);
           return;
