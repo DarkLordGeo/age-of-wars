@@ -42,6 +42,35 @@ export interface WorldOptions {
  * stops that far from the enemy's front unit, or at the enemy base edge. Every unit attacks only
  * the enemy team's FRONT unit (or the base when none is left).
  */
+/** Height (m) a unit's ranged shot leaves from (the slingshot's release point). */
+const SHOT_RELEASE_HEIGHT = 1.45;
+/** Slack (m) around a unit's body when testing projectile hits. */
+const HIT_MARGIN = 0.15;
+/** Height (m) of a base's hitbox for unit shots. */
+const BASE_HIT_HEIGHT = 2 * GAME.baseAimHeight;
+
+/**
+ * First parameter t in [0, 1] at which the segment (x0, y0)->(x1, y1) is inside the box
+ * [bx0, bx1] x [by0, by1] (slab test), or null. A segment starting inside returns 0.
+ */
+export function segmentBox(x0: number, y0: number, x1: number, y1: number, bx0: number, bx1: number, by0: number, by1: number): number | null {
+  let t0 = 0;
+  let t1 = 1;
+  for (const [a, d, lo, hi] of [[x0, x1 - x0, bx0, bx1], [y0, y1 - y0, by0, by1]] as const) {
+    if (Math.abs(d) < 1e-12) {
+      if (a < lo || a > hi) return null;
+      continue;
+    }
+    let ta = (lo - a) / d;
+    let tb = (hi - a) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
+
 export class World {
   readonly content: Content;
   /** Every unit including corpses still lingering for death animations. */
@@ -376,13 +405,10 @@ export class World {
     const damage = Math.floor(ts.stat('units', 'damage', baseDamage) * unit.damageMultiplier);
     this.events.push({ type: 'attack', team: unit.team, sourceKind: 'unit', sourceId: unit.id, mode });
     const front = this.enemyFront(unit.team);
-    const dir = teamDir(unit.team);
     if (mode === 'ranged' && unit.def.ranged) {
-      // Instant hit; the stone is cosmetic.
-      const tx = front ? front.centerX(-dir as 1 | -1) : this.baseStop(unit.team);
-      const ty = front ? front.def.height * 0.6 : GAME.baseAimHeight;
-      const tz = front ? front.z : 0;
-      this.launchCosmetic(unit.team, unit.def.ranged.projectileId, unit.x, 1.5, unit.z, tx, ty, tz);
+      // A real stone from the release point; damage only if it hits (updateProjectiles).
+      this.launchShot(unit, unit.def.ranged.projectileId, damage, front);
+      return;
     }
     if (front) this.damageUnit(front, damage);
     else this.damageBase(this.bases[opposite(unit.team)], damage);
@@ -429,7 +455,6 @@ export class World {
     const len = Math.hypot(dx, dy) || 1;
     const def = lookup(this.content.projectiles, t.def.projectileId, 'projectile');
     const p = this.allocProjectile(team, def.id);
-    p.physical = true;
     p.damage = Math.floor(ts.stat('turrets', 'damage', t.def.damage));
     p.x = t.x;
     p.y = t.y;
@@ -452,56 +477,66 @@ export class World {
     p.team = team;
     p.age = 0;
     p.damage = 0;
+    p.hitsBase = false;
     p.vx = p.vy = p.vz = 0;
     this.projectiles.push(p);
     return p;
   }
 
-  private launchCosmetic(team: Team, defId: string, x: number, y: number, z: number, tx: number, ty: number, tz: number): void {
-    const p = this.allocProjectile(team, defId);
-    p.physical = false;
-    p.sx = p.x = x;
-    p.sy = p.y = y;
-    p.sz = p.z = z;
-    p.tx = tx;
-    p.ty = ty;
-    p.tz = tz;
-    p.flight = Math.max(0.12, Math.hypot(tx - x, tz - z) / p.def.speed);
-    this.events.push({ type: 'projectileFired', projectileId: p.id, defId, team, x, y, z });
+  /**
+   * A unit's ranged shot: from its release point (its front, at hand height) on a ballistic arc
+   * aimed at the enemy front unit's body (led by its walking speed) or the enemy base.
+   */
+  private launchShot(unit: Unit, defId: string, damage: number, front: Unit | undefined): void {
+    const p = this.allocProjectile(unit.team, defId);
+    const g = p.def.gravity;
+    p.damage = damage;
+    p.hitsBase = true;
+    p.x = unit.x;
+    p.y = SHOT_RELEASE_HEIGHT;
+    p.z = unit.z;
+    let tx: number, ty: number, tz: number;
+    if (front) {
+      const fdir = teamDir(front.team);
+      tx = front.centerX(fdir);
+      ty = front.def.height * 0.55;
+      tz = front.z;
+      if (front.moving) tx += fdir * front.def.speed * (Math.abs(tx - p.x) / p.def.speed); // lead
+    } else {
+      tx = this.baseStop(unit.team) + teamDir(unit.team) * 0.5;
+      ty = GAME.baseAimHeight;
+      tz = 0;
+    }
+    const t = Math.max(0.12, Math.hypot(tx - p.x, tz - p.z) / p.def.speed);
+    p.vx = (tx - p.x) / t;
+    p.vz = (tz - p.z) / t;
+    p.vy = (ty - p.y + 0.5 * g * t * t) / t;
+    this.events.push({ type: 'projectileFired', projectileId: p.id, defId, team: unit.team, x: p.x, y: p.y, z: p.z });
   }
 
   private updateProjectiles(dt: number): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
       p.age += dt;
+      const ox = p.x;
+      const oy = p.y;
+      p.vy -= p.def.gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
       let done = false;
-      if (p.physical) {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.z += p.vz * dt;
-        const victim = this.status === 'playing' ? this.unitAt(opposite(p.team), p.x, p.y) : null;
-        if (victim) {
-          this.damageUnit(victim, p.damage);
-          this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
-          done = true;
-        } else if (p.y <= 0 || p.age >= GAME.projectileLifetime || Math.abs(p.x) > GAME.baseOffset + 20) {
-          this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: false, x: p.x, y: Math.max(0, p.y), z: p.z });
-          done = true;
-        }
-      } else {
-        const f = Math.min(1, p.age / p.flight);
-        const ox = p.x;
-        const oy = p.y;
-        const oz = p.z;
-        p.x = p.sx + (p.tx - p.sx) * f;
-        p.z = p.sz + (p.tz - p.sz) * f;
-        p.y = p.sy + (p.ty - p.sy) * f + p.def.arcHeight * 4 * f * (1 - f);
-        p.vx = (p.x - ox) / dt;
-        p.vy = (p.y - oy) / dt;
-        p.vz = (p.z - oz) / dt;
-        done = f >= 1;
-        // Damage was applied at launch; the landing is still an impact for effects/audio.
-        if (done) this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
+      // Swept test along this step's path: the first enemy hitbox it crosses takes the damage.
+      const hit = this.status === 'playing' ? this.sweep(p, ox, oy) : null;
+      if (hit) {
+        p.x = ox + (p.x - ox) * hit.t;
+        p.y = oy + (p.y - oy) * hit.t;
+        if (hit.unit) this.damageUnit(hit.unit, p.damage);
+        else this.damageBase(this.bases[opposite(p.team)], p.damage);
+        this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
+        done = true;
+      } else if (p.y <= 0 || p.age >= GAME.projectileLifetime || Math.abs(p.x) > GAME.baseOffset + 20) {
+        this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: false, x: p.x, y: Math.max(0, p.y), z: p.z });
+        done = true;
       }
       if (done) {
         this.projectiles[i] = this.projectiles[this.projectiles.length - 1]!;
@@ -511,17 +546,26 @@ export class World {
     }
   }
 
-  /** The living unit of `team` whose body contains lane point (x, y), front units first. */
-  private unitAt(team: Team, x: number, y: number): Unit | null {
-    const list = this.alive[team];
-    const dir = teamDir(team);
-    for (let k = 0; k < list.length; k++) {
-      const u = list[dir === 1 ? list.length - 1 - k : k]!;
-      if (y < 0 || y > u.def.height) continue;
+  /**
+   * Earliest crossing (t in [0, 1] along the segment from (ox, oy) to the projectile's position)
+   * of an enemy unit's body box (lane x interval x [0, height]) or, for unit shots, the enemy
+   * base box. Null on a miss.
+   */
+  private sweep(p: Projectile, ox: number, oy: number): { t: number; unit: Unit | null } | null {
+    let best: { t: number; unit: Unit | null } | null = null;
+    const enemy = opposite(p.team);
+    const dir = teamDir(enemy);
+    for (const u of this.alive[enemy]) {
       const back = u.x - dir * u.def.length;
-      if (x >= Math.min(u.x, back) - 0.15 && x <= Math.max(u.x, back) + 0.15) return u;
+      const t = segmentBox(ox, oy, p.x, p.y, Math.min(u.x, back) - HIT_MARGIN, Math.max(u.x, back) + HIT_MARGIN, 0, u.def.height);
+      if (t !== null && (!best || t < best.t)) best = { t, unit: u };
     }
-    return null;
+    if (p.hitsBase) {
+      const b = this.bases[enemy];
+      const t = segmentBox(ox, oy, p.x, p.y, b.x - b.radius, b.x + b.radius, 0, BASE_HIT_HEIGHT);
+      if (t !== null && (!best || t < best.t)) best = { t, unit: null };
+    }
+    return best;
   }
 
   // ------------------------------------------------------------------ damage
