@@ -16,10 +16,10 @@ import { ModelAnimator } from './ModelAnimator';
 import { excludeFromAO } from './post';
 
 const LUNGE_TIME = 0.32;
-const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6 });
+const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6, fog: false });
 /** Health bar fill: red for every unit, readable on grass, dirt and rock. */
-const BAR_RED = 0xe53935;
-const barFg = new MeshBasicMaterial({ color: BAR_RED, depthTest: false });
+const BAR_RED = 0xef5350;
+const barFg = new MeshBasicMaterial({ color: BAR_RED, depthTest: false, toneMapped: false, fog: false }); // UI colour: same shade everywhere (no tone mapping, no distance fog)
 /** The hovered unit's bar is drawn a little larger. */
 const HOVER_BAR_SCALE = 1.2;
 const barGeo = new PlaneGeometry(1, 1);

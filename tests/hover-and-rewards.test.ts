@@ -59,6 +59,30 @@ describe('hover health bars', () => {
     assert.equal(v.barState.frac, 1, 'never wider than full');
   });
 
+  it('one colour in every situation: damaged, hit in combat, hovered or not, near or far (no fog, no tone mapping)', () => {
+    const { u, v } = viewAt(0);
+    const fill = () => (v as unknown as { fill: { material: { color: { getHex(): number }; fog: boolean; toneMapped: boolean } } }).fill.material;
+    const first = fill();
+    const seen = new Set<number>();
+    const look = () => {
+      v.update(1 / 60, null);
+      assert.equal(fill(), first, 'the same material throughout');
+      seen.add(fill().color.getHex());
+    };
+    u.health = u.maxHealth * 0.7;
+    look();
+    v.triggerHit(); // struck in combat
+    look();
+    v.setHovered(true);
+    look();
+    v.setHovered(false);
+    u.state = 'attacking';
+    look();
+    assert.equal(seen.size, 1);
+    assert.equal(first.fog, false, 'distance fog never tints it');
+    assert.equal(first.toneMapped, false, 'shown as the configured colour');
+  });
+
   it('hidden when the hovered unit dies, and a pooled view starts un-hovered', () => {
     const { w, u, v } = viewAt(0);
     v.setHovered(true);
