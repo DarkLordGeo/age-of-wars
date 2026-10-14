@@ -132,6 +132,7 @@ export class GameRenderer {
         {
           variants: this.assets.clipVariantsFor(unit.def.modelKey),
           strike: this.assets.strikeTimeFor(unit.def.modelKey),
+          locomotion: this.assets.locomotionFor(unit.def.modelKey),
           onSwing: (u) => this.onSwing?.(u),
         },
       );

@@ -127,15 +127,30 @@ export class ModelAnimator {
   setLoopSpeed(scale: number): void {
     if (scale === this.speed) return;
     this.speed = scale;
-    if (this.loopAction) this.loopAction.timeScale = this.loopRate * scale;
+    if (this.loopAction) this.loopAction.timeScale = this.rateOf(this.loopName) * scale;
   }
 
-  /** Loop `name` unless a full-body one-shot is still running. No-op if already playing. */
-  playLoop(name: ClipName): void {
+  /**
+   * Loop `name` unless a full-body one-shot is still running. No-op if already playing.
+   * `phase` (0..1) starts it at that point of its cycle (e.g. matched to the outgoing pose).
+   */
+  playLoop(name: ClipName, phase?: number): void {
     if ((this.shotName && !this.mask) || this.loopName === name) return;
     const take = this.actions.get(name)?.[0];
     if (!take) return;
-    this.swapLoop(this.mask ? this.complement(name, take) : take, name, false);
+    this.swapLoop(this.mask ? this.complement(name, take) : take, name, false, phase);
+  }
+
+  /** Name of the running loop (null while a full-body one-shot holds the model). */
+  get loop(): ClipName | null {
+    return this.loopName;
+  }
+
+  /** Pose the running loop at `time` (s) and hold it there (time-driven clips, e.g. `start`). */
+  scrub(time: number): void {
+    if (!this.loopAction) return;
+    this.setLoopSpeed(0);
+    this.loopAction.time = time;
   }
 
   /**
@@ -245,17 +260,17 @@ export class ModelAnimator {
    * one's cycle when `keepPhase` (same clip, re-layered) or when both are gaits (walk <-> run keep
    * the stride); otherwise it starts at this unit's own phase.
    */
-  private swapLoop(next: AnimationAction, name: ClipName, keepPhase: boolean): void {
+  private swapLoop(next: AnimationAction, name: ClipName, keepPhase: boolean, phase?: number): void {
     const prev = this.loopAction;
     if (prev === next) return;
     this.releaseLingering(next);
     this.phase0 ??= this.random();
     const dur = next.getClip().duration;
     const carry = prev && (keepPhase || (GAITS.has(name) && this.loopName !== null && GAITS.has(this.loopName)));
-    const frac = carry ? prev.time / prev.getClip().duration : this.phase0;
+    const frac = phase ?? (carry ? prev.time / prev.getClip().duration : this.phase0);
     next.reset();
     next.setLoop(LoopRepeat, Infinity);
-    next.timeScale = this.loopRate * this.speed;
+    next.timeScale = this.rateOf(name) * this.speed;
     next.time = (frac % 1) * dur;
     if (prev) {
       next.fadeIn(FADE).play();
@@ -265,6 +280,14 @@ export class ModelAnimator {
     }
     this.loopAction = next;
     this.loopName = name;
+  }
+
+  /**
+   * Per-unit playback rate of a loop. Gait loops (walk/run) play at their stride-matched speed
+   * only: a rate offset there would make the feet slide. Units still differ by their loop phase.
+   */
+  private rateOf(name: ClipName | null): number {
+    return name && GAITS.has(name) ? 1 : this.loopRate;
   }
 
   /** `loop`'s take without the tracks of the running partial one-shot (cached). */

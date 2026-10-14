@@ -25,17 +25,20 @@ export interface UnitPhysics {
  * Walking gait (sim): `speed` (m/s) while walking. A runner drops to a walk when the free room
  * ahead falls below `enter` (m) and runs again once it exceeds `exit` (m) or the ally ahead runs
  * off; `exit` > `enter` plus the minimum `hold` (s) in a gait keep it from flickering at the
- * threshold. Speed changes between gaits use the unit's accel/decel, so the switch is smooth.
+ * threshold. Speed changes between gaits use the unit's accel/decel, so the switch is smooth;
+ * setting off into a walk uses `accel` (the Clubman's matches Mixamo's Start Walking, ~1 m/s^2).
  */
 export interface Gait {
   speed: number;
+  /** Acceleration (m/s^2) setting off into a walk (gentler than the unit's run start). */
+  accel: number;
   enter: number;
   exit: number;
   hold: number;
 }
 
 export const UNIT_PHYSICS: Record<string, UnitPhysics> = {
-  clubman: { mass: 70, accel: 18, decel: 22, turnRate: 9, knockResist: 0, walk: { speed: 1.5, enter: 2.4, exit: 4, hold: 0.4 } },
+  clubman: { mass: 70, accel: 18, decel: 22, turnRate: 9, knockResist: 0, walk: { speed: 1.5, accel: 1, enter: 2.4, exit: 4, hold: 0.4 } },
   slingshot: { mass: 65, accel: 20, decel: 24, turnRate: 9.5, knockResist: 0 },
   dino: { mass: 1200, accel: 3.6, decel: 4.5, turnRate: 3, knockResist: 0.85 },
 };

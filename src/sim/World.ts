@@ -397,7 +397,8 @@ export class World {
     const cap = gait && unit.gait === 'walk' ? Math.min(top, gait.speed) : top;
     // Accelerate toward the gait's speed (or slow down to it), and brake early enough to stop
     // exactly at the gap (v <= sqrt(2 * decel * room)): heavy units start and stop gradually.
-    let v = unit.vel <= cap ? Math.min(cap, unit.vel + phys.accel * dt) : Math.max(cap, unit.vel - phys.decel * dt);
+    const accel = gait && unit.gait === 'walk' ? Math.min(phys.accel, gait.accel) : phys.accel;
+    let v = unit.vel <= cap ? Math.min(cap, unit.vel + accel * dt) : Math.max(cap, unit.vel - phys.decel * dt);
     if (Number.isFinite(phys.decel)) v = Math.min(v, Math.sqrt(2 * phys.decel * free));
     const step = Math.min(v * dt, free);
     unit.vel = dt > 0 ? step / dt : 0;

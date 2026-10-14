@@ -8,7 +8,8 @@ metallic-roughness, normal) replaces the FBX's simplified one (same UVs). Each c
 animation from a Mixamo FBX of the same character ("With Skin" or "Without Skin"), optionally
 trimmed to frames start-end (Mixamo frame numbers, 30 fps), e.g. attack=stab.fbx:26-46.
 Suffixes: `~` plays the range forward then back (a seamless loop from a short still), `!`
-removes the hips' horizontal travel (root motion: the sim moves units), `@rate` time-scales the
+removes the hips' horizontal travel (root motion: the sim moves units; use it for loops, NOT
+for `start=` (Start Walking), whose travel the game reads to drive it by distance), `@rate` time-scales the
 clip, e.g. `walk=run.fbx:1-23!@1.25` so the stride matches the unit's speed. Variants of one clip
 are named `death`, `death_2`, ...; the game picks one at random each time.
 

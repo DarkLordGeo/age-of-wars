@@ -20,6 +20,9 @@ export function createAssetLibrary(): AssetLibrary {
     placeholder: createSoldierPlaceholder,
     expectedHeight: 1.8,
     strike: 0.3, // attack clip: the club comes down ~9 frames in (Double Dagger Stab 26-46)
+    // Walking: 1.701 m per 31-frame cycle at 0.912x; Slow Run: 2.115 m per 22 frames at 1.222x
+    // (mixamo_build.py rates, snapped to whole frames). `start` is Mixamo's Start Walking.
+    gaitSpeed: { walk: 1.5, run: 3.526 },
   });
   // Slingshot Man: the same Mixamo-rigged caveman with a slingshot in the left fist, the Run
   // Forward run, and a keyed upper-body shot layered over the running/idling legs

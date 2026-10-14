@@ -7,11 +7,12 @@ import { Box3, type AnimationClip, type Mesh, type Object3D } from 'three';
 /** Clips every animated unit must ship. */
 export const REQUIRED_CLIPS = ['idle', 'walk', 'attack', 'death'] as const;
 /**
- * Every clip name the game plays. Optional: `hit` (a short flinch when struck) and `run` (the
+ * Every clip name the game plays. Optional: `hit` (a short flinch when struck), `run` (the
  * long-distance gait; with it, `walk` is the walking gait for short approaches, without it
- * `walk` is the unit's only locomotion loop).
+ * `walk` is the unit's only locomotion loop) and `start` (setting off from a standstill into a
+ * walk, exported WITH its root travel: the game drives it by distance, see assets/startClip.ts).
  */
-export const CLIP_NAMES = [...REQUIRED_CLIPS, 'hit', 'run'] as const;
+export const CLIP_NAMES = [...REQUIRED_CLIPS, 'hit', 'run', 'start'] as const;
 export type ClipName = (typeof CLIP_NAMES)[number];
 
 /** A material with this name is cloned and recoloured per team at instantiate time. */
