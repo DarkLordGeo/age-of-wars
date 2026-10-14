@@ -108,10 +108,18 @@ def fcurves(act):
 
 def trim(act, f0, f1, rate, pingpong=False, in_place=False):
     """Keep keys in [f0, f1], shift them to start at frame 0, optionally append the range
-    reversed (pingpong), remove the hips' travel (in_place) and time-scale by 1/rate."""
+    reversed (pingpong), remove the hips' travel (in_place) and time-scale by 1/rate.
+    Returns the rate used: nudged so the clip lasts a whole number of frames. The glTF exporter
+    samples whole frames, so a cycle ending between two (22 frames at 1.25 = 17.6) lost its last
+    part and the loop popped at the wrap (the Clubman's run)."""
     span = f1 - f0
+    frames = span * (2 if pingpong else 1)
+    rate = frames / max(1, round(frames / rate))
     for fc in fcurves(act):
-        pts = [(k.co.x - f0, k.co.y) for k in fc.keyframe_points if f0 - 1e-3 <= k.co.x <= f1 + 1e-3]
+        # Mixamo stores some channels (toes, fingers) with sparse keys: evaluate the curve at the
+        # range ends so a trimmed cycle starts and ends on the true pose (no pop at the loop wrap).
+        inner = [(k.co.x - f0, k.co.y) for k in fc.keyframe_points if f0 + 1e-3 < k.co.x < f1 - 1e-3]
+        pts = [(0.0, fc.evaluate(f0))] + inner + [(float(span), fc.evaluate(f1))]
         if in_place and fc.data_path == 'pose.bones["mixamorig:Hips"].location' and len(pts) > 1:
             drift = pts[-1][1] - pts[0][1]
             pts = [(x, y - drift * x / span) for x, y in pts]  # linear travel out, bob/sway kept
@@ -123,6 +131,7 @@ def trim(act, f0, f1, rate, pingpong=False, in_place=False):
             k.co = (x / rate, y)
             k.interpolation = 'LINEAR'
         fc.update()
+    return rate
 
 
 UPPER = ('Spine', 'Neck', 'Head', 'Shoulder', 'Arm', 'Hand')
@@ -205,7 +214,7 @@ for name, path, rng, rate, flags in CLIPS:
     act.name = name
     act.use_fake_user = True
     f0, f1 = rng if rng else (int(src_act.frame_range[0]), int(src_act.frame_range[1]))
-    trim(act, f0, f1, rate, pingpong='~' in flags, in_place='!' in flags)
+    rate = trim(act, f0, f1, rate, pingpong='~' in flags, in_place='!' in flags)
     tr = arm.animation_data.nla_tracks.new()
     tr.name = name
     st = tr.strips.new(name, 0, act)

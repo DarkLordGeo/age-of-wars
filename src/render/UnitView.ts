@@ -1,6 +1,7 @@
 import { Box3, Group, Mesh, MeshBasicMaterial, PlaneGeometry, type AnimationClip, type Camera, type Object3D } from 'three';
 import type { ClipName } from '../assets/contract';
 import { GAME } from '../config/game';
+import { physicsOf } from '../config/physics';
 import { createRng } from '../sim/rng';
 import type { Unit } from '../sim/Unit';
 import { opposite, teamDir } from '../sim/types';
@@ -60,6 +61,25 @@ export function combatTarget(world: World, unit: Unit, drawnAt: (u: Unit) => { x
   const front = unit.team === 'player' ? foes[0] : foes[foes.length - 1];
   if (front) return drawnAt(front) ?? { x: front.x, z: front.z };
   return { x: world.bases[opposite(unit.team)].x, z: 0 };
+}
+
+/** Bounds of the stride-matching playback factor (a unit just starting off or stopping). */
+export const GAIT_SPEED = { min: 0.35, max: 1.5 };
+
+/**
+ * Loop clip and playback factor for a live unit. Moving units play their sim gait: `run` over
+ * distance and `walk` on short approaches when the model has both clips (a model without `run`
+ * has one locomotion loop, `walk`, for both gaits). The factor is ground speed over the speed the
+ * clip was authored for (a run at the unit type's speed, a walk at its walking-gait speed), so the
+ * feet keep pace with the ground instead of sliding.
+ */
+export function gaitLoop(unit: Unit, hasRun: boolean): { clip: ClipName; speed: number } {
+  if (!unit.moving) return { clip: 'idle', speed: 1 };
+  const walkGait = physicsOf(unit.def.id).walk;
+  const walking = hasRun && unit.gait === 'walk';
+  const authored = walking && walkGait ? walkGait.speed : unit.def.speed;
+  const speed = Math.min(GAIT_SPEED.max, Math.max(GAIT_SPEED.min, unit.vel / authored));
+  return { clip: hasRun && !walking ? 'run' : 'walk', speed };
 }
 
 export interface UnitViewOptions {
@@ -195,8 +215,7 @@ export class UnitView {
       this.animator.update(dt);
       this.syncSwing();
       if (u.state === 'dead') this.animator.playOnce('death');
-      else if (u.moving) this.animator.playLoop('walk');
-      else this.animator.playLoop('idle');
+      else this.playGait(this.animator);
     } else {
       this.animateProcedurally(dt, dir);
     }
@@ -264,6 +283,12 @@ export class UnitView {
       this.swingArmed = false;
       if (this.animator.playOnce('attack') && melee) this.opts.onSwing?.(u);
     }
+  }
+
+  private playGait(animator: ModelAnimator): void {
+    const { clip, speed } = gaitLoop(this.unit, animator.has('run'));
+    animator.playLoop(clip);
+    animator.setLoopSpeed(speed);
   }
 
   /** Stand-in animation for placeholder models that have no clips. */

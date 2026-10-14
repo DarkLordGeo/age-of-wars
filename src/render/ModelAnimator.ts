@@ -9,6 +9,9 @@ const FADE = 0.12;
  */
 const PRIORITY: Partial<Record<ClipName, number>> = { hit: 1, attack: 2, death: 3 };
 
+/** Locomotion cycles: switching between them keeps the stride's phase (same foot forward). */
+const GAITS: ReadonlySet<ClipName> = new Set<ClipName>(['walk', 'run']);
+
 const qa = new Quaternion();
 const qb = new Quaternion();
 const qc = new Quaternion();
@@ -20,7 +23,7 @@ function nodesOf(clip: AnimationClip): Set<string> {
 
 /**
  * Per-instance animation state for one cloned GLB: its own mixer and actions, so pooled
- * units never share playback state. Looping clips (idle/walk) crossfade; one-shots
+ * units never share playback state. Looping clips (idle/walk/run) crossfade; one-shots
  * (hit, attack, death) hold the model until finished. Death clamps on its last frame.
  *
  * Partial one-shots (a clip that animates only some of the bones the loops drive, e.g. an
@@ -51,6 +54,14 @@ export class ModelAnimator {
   private readonly complements = new Map<string, AnimationAction>();
   private loopRate = 1;
   private attackRate = 1;
+  /** Gait speed factor of the loop (setLoopSpeed): stride timing follows the ground speed. */
+  private speed = 1;
+  /**
+   * This unit's loop phase (fraction of a cycle), drawn once when its first loop starts so
+   * identical units are out of step. Later loops start from it too: no new random jump on
+   * every idle/walk switch.
+   */
+  private phase0: number | null = null;
 
   /**
    * `variants` (optional) adds alternative takes per clip; one-shots pick one at random each
@@ -67,8 +78,11 @@ export class ModelAnimator {
       const takes = variants?.get(name)?.length ? variants.get(name)! : [clip];
       this.actions.set(name, takes.map((c) => this.mixer.clipAction(c)));
     }
-    const loop = clips.get('idle') ?? clips.get('walk');
-    this.loopNodes = loop ? nodesOf(loop) : new Set();
+    this.loopNodes = new Set();
+    for (const n of ['idle', 'walk', 'run'] as const) {
+      const c = clips.get(n);
+      if (c) for (const node of nodesOf(c)) this.loopNodes.add(node);
+    }
     this.mixer.addEventListener('finished', (e) => this.onFinished(e.action as AnimationAction));
   }
 
@@ -104,6 +118,16 @@ export class ModelAnimator {
 
   has(name: ClipName): boolean {
     return this.actions.has(name);
+  }
+
+  /**
+   * Scale the loop's playback (on top of the per-unit rate) so a gait's stride matches how fast
+   * the unit actually moves, e.g. while accelerating or slowing to a walk. 1 = authored speed.
+   */
+  setLoopSpeed(scale: number): void {
+    if (scale === this.speed) return;
+    this.speed = scale;
+    if (this.loopAction) this.loopAction.timeScale = this.loopRate * scale;
   }
 
   /** Loop `name` unless a full-body one-shot is still running. No-op if already playing. */
@@ -192,6 +216,8 @@ export class ModelAnimator {
     this.loopAction = this.shotAction = this.lingering = null;
     this.mask = null;
     this.anchors = [];
+    this.speed = 1;
+    this.phase0 = null;
   }
 
   private releaseLingering(next: AnimationAction): void {
@@ -214,16 +240,23 @@ export class ModelAnimator {
     this.mask = null;
   }
 
-  /** Crossfade the loop to `next` (a full take or a complement), optionally keeping the phase. */
+  /**
+   * Crossfade the loop to `next` (a full take or a complement). The new loop continues the old
+   * one's cycle when `keepPhase` (same clip, re-layered) or when both are gaits (walk <-> run keep
+   * the stride); otherwise it starts at this unit's own phase.
+   */
   private swapLoop(next: AnimationAction, name: ClipName, keepPhase: boolean): void {
     const prev = this.loopAction;
     if (prev === next) return;
     this.releaseLingering(next);
-    const phase = prev && keepPhase ? prev.time : this.random() * next.getClip().duration; // random loop phase
+    this.phase0 ??= this.random();
+    const dur = next.getClip().duration;
+    const carry = prev && (keepPhase || (GAITS.has(name) && this.loopName !== null && GAITS.has(this.loopName)));
+    const frac = carry ? prev.time / prev.getClip().duration : this.phase0;
     next.reset();
     next.setLoop(LoopRepeat, Infinity);
-    next.timeScale = this.loopRate;
-    next.time = phase;
+    next.timeScale = this.loopRate * this.speed;
+    next.time = (frac % 1) * dur;
     if (prev) {
       next.fadeIn(FADE).play();
       prev.fadeOut(FADE);

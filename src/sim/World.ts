@@ -1,4 +1,5 @@
 import { CONTENT } from '../config/content';
+import { physicsOf, type Gait } from '../config/physics';
 import { GAME } from '../config/game';
 import { NEXT_AGE_XP } from '../config/ages';
 import { lookup, type Content, type UnitDef, type UpgradeDef } from '../config/schema';
@@ -69,6 +70,17 @@ export function segmentBox(x0: number, y0: number, x1: number, y1: number, bx0: 
     if (t0 > t1) return null;
   }
   return t0;
+}
+
+/**
+ * Gait decision with hysteresis: a runner walks once `room` < enter (unless the ally ahead is
+ * running), a walker runs again once `room` > exit or the ally ahead runs; no switch before
+ * `hold` seconds in the current gait.
+ */
+export function nextGait(gait: 'run' | 'walk', gaitFor: number, room: number, leaderRuns: boolean, g: Gait): 'run' | 'walk' {
+  if (gaitFor < g.hold) return gait;
+  if (gait === 'run') return room < g.enter && !leaderRuns ? 'walk' : 'run';
+  return room > g.exit || leaderRuns ? 'run' : 'walk';
 }
 
 export class World {
@@ -367,7 +379,28 @@ export class World {
     } else {
       room = (this.baseStop(unit.team) - unit.x) * dir;
     }
-    const step = Math.min(this.teams[unit.team].stat('units', 'speed', def.speed) * dt, Math.max(0, room));
+    const top = this.teams[unit.team].stat('units', 'speed', def.speed);
+    const phys = physicsOf(def.id);
+    const free = Math.max(0, room);
+    // Gait: run over distance, walk the last few metres to the enemy, the base or a halted queue.
+    // The ally ahead is updated first, so its gait this tick is known; following a running ally
+    // keeps the column running instead of walk/run cycling behind it.
+    const gait = phys.walk;
+    if (gait) {
+      unit.gaitFor += dt;
+      const want = nextGait(unit.gait, unit.gaitFor, room, !!ahead && ahead.moving && ahead.gait === 'run', gait);
+      if (want !== unit.gait) {
+        unit.gait = want;
+        unit.gaitFor = 0;
+      }
+    }
+    const cap = gait && unit.gait === 'walk' ? Math.min(top, gait.speed) : top;
+    // Accelerate toward the gait's speed (or slow down to it), and brake early enough to stop
+    // exactly at the gap (v <= sqrt(2 * decel * room)): heavy units start and stop gradually.
+    let v = unit.vel <= cap ? Math.min(cap, unit.vel + phys.accel * dt) : Math.max(cap, unit.vel - phys.decel * dt);
+    if (Number.isFinite(phys.decel)) v = Math.min(v, Math.sqrt(2 * phys.decel * free));
+    const step = Math.min(v * dt, free);
+    unit.vel = dt > 0 ? step / dt : 0;
     unit.moving = step > 1e-6;
     unit.x += dir * step;
 
