@@ -101,11 +101,16 @@ export function createSettlement(tint: number, opts: SettlementOptions = {}): Gr
 
 export const CAVE_BASE = {
   /** Cave height (m); the source model is scaled uniformly to it. */
-  height: 10.5,
-  /** Cave centre (local, base space) and turn: the mouth (source -X side) faces lane + camera. */
-  x: -3,
-  z: -3.5,
-  turnY: (3 * Math.PI) / 4,
+  height: 10,
+  /**
+   * Cave centre (local, base space) and turn: the mouth (source -X side) faces the battlefield
+   * (and a little toward the camera), next to where units appear. Fitted to the 2026-10-14
+   * boulder cave (#45) so the turret slot decks (GAME.slotMounts, unchanged) sit on its rock
+   * instead of inside it (the top slot stands on log legs) and the lane stays clear.
+   */
+  x: -6.25,
+  z: -1.25,
+  turnY: (3 * Math.PI) / 4 + 0.344,
   banner: { x: 1.5, z: -9.5, h: 13 },
 } as const;
 
