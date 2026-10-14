@@ -17,6 +17,12 @@ export class Unit {
   gait: 'run' | 'walk' = 'run';
   /** Seconds in the current gait (decides immediately at spawn). */
   gaitFor = Infinity;
+  /** Seconds left to wait at the base door before setting off (config/variation.ts). */
+  departIn = 0;
+  /** Per-unit variation (config/variation.ts): acceleration, braking and body size factors. */
+  accelScale = 1;
+  decelScale = 1;
+  bodyScale = 1;
   /** Seconds to the next melee hit / ranged shot; null when that routine is not running. */
   meleeTimer: number | null = null;
   rangedTimer: number | null = null;

@@ -247,7 +247,7 @@ describe('locomotion gaits (sim)', () => {
 });
 
 describe('locomotion clips (render)', () => {
-  const unit = (p: Partial<Unit>): Unit => ({ def: UNITS.clubman!, moving: true, vel: RUN, gait: 'run', ...p }) as Unit;
+  const unit = (p: Partial<Unit>): Unit => ({ def: UNITS.clubman!, moving: true, vel: RUN, gait: 'run', bodyScale: 1, ...p }) as Unit;
 
   it('picks idle, run or walk from the sim gait, with stride speed matched to ground speed', () => {
     assert.deepEqual(gaitLoop(unit({ moving: false }), true), { clip: 'idle', speed: 1 });

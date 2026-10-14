@@ -9,6 +9,7 @@ import { Projectile } from './Projectile';
 import { TeamState } from './TeamState';
 import { Unit } from './Unit';
 import { createRng } from './rng';
+import { unitVariation } from '../config/variation';
 import { availableUpgrades, canAdvanceAge, currentAge, isTurretAvailable, isUnitUnlocked, xpToEvolve } from './progression';
 import {
   opposite,
@@ -108,6 +109,8 @@ export class World {
 
   private readonly events: SimEvent[] = [];
   private readonly rng: () => number;
+  /** The match seed (per-unit variation is derived from it and the unit id). */
+  readonly seed: number;
   /** Shot variation (arc, aim point within the target): its own stream, so other randomness is unchanged. */
   private readonly shotRng: () => number;
   private readonly projectilePool: Projectile[] = [];
@@ -116,7 +119,8 @@ export class World {
 
   constructor(opts: WorldOptions = {}) {
     this.content = opts.content ?? CONTENT;
-    this.rng = createRng(opts.seed ?? GAME.seed);
+    this.seed = opts.seed ?? GAME.seed;
+    this.rng = createRng(this.seed);
     this.shotRng = createRng(((opts.seed ?? GAME.seed) ^ 0x5eed5) >>> 0);
     const profile = this.content.ai[opts.difficulty ?? GAME.defaultDifficulty];
     const hp = this.content.ages[0]!.baseHealth;
@@ -268,6 +272,12 @@ export class World {
     const z = (this.rng() * 2 - 1) * GAME.laneHalfWidth;
     const maxHealth = Math.floor(ts.stat('units', 'maxHealth', def.maxHealth) * mult);
     const unit = new Unit(this.nextId++, def, team, x ?? this.spawnX(team, def), z, maxHealth, mult);
+    const v = unitVariation(this.seed, unit.id);
+    unit.accelScale = v.accelScale;
+    unit.decelScale = v.decelScale;
+    unit.bodyScale = v.bodyScale;
+    // Units coming out of the base door set off after their own short delay (not in lockstep).
+    if (x === undefined) unit.departIn = v.departDelay;
     this.units.push(unit);
     this.alive[team].push(unit);
     this.sortLane(team);
@@ -387,6 +397,10 @@ export class World {
     }
     const top = this.teams[unit.team].stat('units', 'speed', def.speed);
     const phys = physicsOf(def.id);
+    if (unit.departIn > 0) {
+      unit.departIn = Math.max(0, unit.departIn - dt);
+      room = 0; // still at the door: waits (idle), then sets off like any unit
+    }
     if (phys.holdAtRange && def.ranged) {
       // Walk up to the firing position and hold there (same reach rule as the ranged check below).
       const reach = front ? (front.x - unit.x) * dir - GAME.minUnitGap : (this.baseStop(unit.team) - unit.x) * dir;
@@ -408,9 +422,10 @@ export class World {
     const cap = gait && unit.gait === 'walk' ? Math.min(top, gait.speed) : top;
     // Accelerate toward the gait's speed (or slow down to it), and brake early enough to stop
     // exactly at the gap (v <= sqrt(2 * decel * room)): heavy units start and stop gradually.
-    const accel = gait && unit.gait === 'walk' ? Math.min(phys.accel, gait.accel) : phys.accel;
-    let v = unit.vel <= cap ? Math.min(cap, unit.vel + accel * dt) : Math.max(cap, unit.vel - phys.decel * dt);
-    if (Number.isFinite(phys.decel)) v = Math.min(v, Math.sqrt(2 * phys.decel * free));
+    const accel = (gait && unit.gait === 'walk' ? Math.min(phys.accel, gait.accel) : phys.accel) * unit.accelScale;
+    const decel = phys.decel * unit.decelScale;
+    let v = unit.vel <= cap ? Math.min(cap, unit.vel + accel * dt) : Math.max(cap, unit.vel - decel * dt);
+    if (Number.isFinite(decel)) v = Math.min(v, Math.sqrt(2 * decel * free));
     const step = Math.min(v * dt, free);
     unit.vel = dt > 0 ? step / dt : 0;
     unit.moving = step > 1e-6;
