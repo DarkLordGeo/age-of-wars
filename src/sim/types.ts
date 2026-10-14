@@ -25,7 +25,8 @@ export type SimEvent =
   | { type: 'spawn'; unitId: number; team: Team }
   | { type: 'attack'; team: Team; sourceKind: 'unit' | 'turret'; sourceId: number; mode: 'melee' | 'ranged' }
   | { type: 'projectileFired'; projectileId: number; defId: string; team: Team; x: number; y: number; z: number }
-  | { type: 'projectileImpact'; projectileId: number; defId: string; hit: boolean; x: number; y: number; z: number }
+  /** Where a projectile stopped (y: height above the ground; a miss on the ground has y = 0) and its velocity then. */
+  | { type: 'projectileImpact'; projectileId: number; defId: string; hit: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number }
   | { type: 'hit'; targetKind: 'unit' | 'base'; targetId: number; team: Team; damage: number; x: number; y: number; z: number }
   | { type: 'death'; unitId: number; team: Team; killerTeam: Team }
   | { type: 'baseDamage'; team: Team; damage: number; health: number }

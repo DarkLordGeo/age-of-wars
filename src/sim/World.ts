@@ -566,15 +566,25 @@ export class World {
       let done = false;
       // Swept test along this step's path: the first enemy hitbox it crosses takes the damage.
       const hit = this.status === 'playing' ? this.sweep(p, ox, oy) : null;
+      const oz = p.z - p.vz * dt;
       if (hit) {
         p.x = ox + (p.x - ox) * hit.t;
         p.y = oy + (p.y - oy) * hit.t;
+        p.z = oz + (p.z - oz) * hit.t;
         if (hit.unit) this.damageUnit(hit.unit, p.damage);
         else this.damageBase(this.bases[opposite(p.team)], p.damage);
-        this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: true, x: p.x, y: p.y, z: p.z });
+        this.impact(p, true);
         done = true;
-      } else if (p.y <= 0 || p.age >= GAME.projectileLifetime || Math.abs(p.x) > GAME.baseOffset + 20) {
-        this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit: false, x: p.x, y: Math.max(0, p.y), z: p.z });
+      } else if (p.y <= 0) {
+        // Down on the ground: stop exactly where the path crosses it (y = 0).
+        const t = oy > 0 ? oy / (oy - p.y) : 0;
+        p.x = ox + (p.x - ox) * t;
+        p.z = oz + (p.z - oz) * t;
+        p.y = 0;
+        this.impact(p, false);
+        done = true;
+      } else if (p.age >= GAME.projectileLifetime || Math.abs(p.x) > GAME.baseOffset + 20) {
+        this.impact(p, false);
         done = true;
       }
       if (done) {
@@ -583,6 +593,10 @@ export class World {
         this.projectilePool.push(p);
       }
     }
+  }
+
+  private impact(p: Projectile, hit: boolean): void {
+    this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit, x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz });
   }
 
   /**
