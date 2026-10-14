@@ -13,6 +13,7 @@ import {
 } from 'three';
 import type { ProjectileDef } from '../config/schema';
 import type { Projectile } from '../sim/Projectile';
+import { rockGeometry, STONE_VARIANTS, stoneLook, stoneRotation, type StoneLook } from './stoneShapes';
 import { pathCenterZ, terrainHeight } from './terrain';
 
 const CAPACITY = 1024;
@@ -37,12 +38,16 @@ function shapeGeometry(shape: Shape): BufferGeometry {
 }
 
 /**
- * Draws every in-flight projectile, one instanced mesh per shape (stone, egg, boulder); no
- * per-frame allocation. Projectiles are oriented along their velocity and spin a little.
+ * Draws every in-flight projectile with instanced meshes; no per-frame allocation. Stones (sling
+ * stones, turret rocks) use one of STONE_VARIANTS irregular rock meshes with their own proportions
+ * and tumble (stoneShapes.ts, seeded by projectile id, the same look they keep once landed); eggs
+ * and boulders fly along their velocity.
  */
 export class ProjectileRenderer {
-  private readonly meshes = new Map<Shape, InstancedMesh>();
-  private readonly counts = new Map<Shape, number>();
+  private readonly meshes = new Map<string, InstancedMesh>();
+  private readonly counts = new Map<string, number>();
+  private readonly looks = new Map<number, StoneLook>();
+  private readonly seen = new Set<number>();
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
   private readonly spin = new Quaternion();
@@ -53,37 +58,52 @@ export class ProjectileRenderer {
 
   constructor(scene: Scene) {
     const mat = new MeshStandardMaterial({ roughness: 0.9, flatShading: true });
-    for (const shape of ['stone', 'egg', 'boulder'] as const) {
-      const mesh = new InstancedMesh(shapeGeometry(shape), shape === 'egg' ? new MeshStandardMaterial({ roughness: 0.55 }) : mat, CAPACITY);
+    const add = (key: string, geo: BufferGeometry, material: MeshStandardMaterial) => {
+      const mesh = new InstancedMesh(geo, material, CAPACITY);
       mesh.count = 0;
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.setColorAt(0, this.color.set(0xffffff)); // allocates instanceColor once
       scene.add(mesh);
-      this.meshes.set(shape, mesh);
-    }
+      this.meshes.set(key, mesh);
+    };
+    for (let v = 0; v < STONE_VARIANTS; v++) add(`stone${v}`, rockGeometry(v), mat);
+    add('egg', shapeGeometry('egg'), new MeshStandardMaterial({ roughness: 0.55 }));
+    add('boulder', shapeGeometry('boulder'), mat);
   }
 
   update(projectiles: readonly Projectile[]): void {
     for (const k of this.meshes.keys()) this.counts.set(k, 0);
+    this.seen.clear();
     for (const p of projectiles) {
-      const mesh = this.meshes.get(p.def.shape) ?? this.meshes.get('stone')!;
-      const shape = mesh === this.meshes.get(p.def.shape) ? p.def.shape : 'stone';
-      const i = this.counts.get(shape)!;
-      if (i >= CAPACITY) continue;
-      this.dir.set(p.vx, p.vy, p.vz);
-      if (this.dir.lengthSq() > 1e-6) this.q.setFromUnitVectors(UNIT_X, this.dir.normalize());
-      if (shape !== 'egg') this.q.multiply(this.spin.setFromAxisAngle(UNIT_Z, p.age * 9));
       const s = p.def.size;
+      let key: string = p.def.shape;
+      if (p.def.shape === 'stone') {
+        let look = this.looks.get(p.id);
+        if (!look) this.looks.set(p.id, (look = stoneLook(p.id)));
+        this.seen.add(p.id);
+        key = `stone${look.variant}`;
+        stoneRotation(look, p.age, this.q);
+        this.scl.copy(look.scale).multiplyScalar(s);
+      } else {
+        this.dir.set(p.vx, p.vy, p.vz);
+        if (this.dir.lengthSq() > 1e-6) this.q.setFromUnitVectors(UNIT_X, this.dir.normalize());
+        if (p.def.shape !== 'egg') this.q.multiply(this.spin.setFromAxisAngle(UNIT_Z, p.age * 9));
+        this.scl.set(s, s, s);
+      }
+      const mesh = this.meshes.get(key) ?? this.meshes.get('stone0')!;
+      const i = this.counts.get(key) ?? 0;
+      if (i >= CAPACITY) continue;
       // Sim heights are above the local ground, like the units standing on the terrain.
       const z = p.z + pathCenterZ(p.x);
-      this.m.compose(this.pos.set(p.x, p.y + terrainHeight(p.x, z), z), this.q, this.scl.set(s, s, s));
+      this.m.compose(this.pos.set(p.x, p.y + terrainHeight(p.x, z), z), this.q, this.scl);
       mesh.setMatrixAt(i, this.m);
       mesh.setColorAt(i, this.color.setHex(p.def.color));
-      this.counts.set(shape, i + 1);
+      this.counts.set(key, i + 1);
     }
-    for (const [shape, mesh] of this.meshes) {
-      mesh.count = this.counts.get(shape)!;
+    for (const id of this.looks.keys()) if (!this.seen.has(id)) this.looks.delete(id);
+    for (const [key, mesh] of this.meshes) {
+      mesh.count = this.counts.get(key)!;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }

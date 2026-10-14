@@ -105,6 +105,8 @@ export class World {
 
   private readonly events: SimEvent[] = [];
   private readonly rng: () => number;
+  /** Shot variation (arc, aim point within the target): its own stream, so other randomness is unchanged. */
+  private readonly shotRng: () => number;
   private readonly projectilePool: Projectile[] = [];
   private nextId = 1;
   private nextProjectileId = 1;
@@ -112,6 +114,7 @@ export class World {
   constructor(opts: WorldOptions = {}) {
     this.content = opts.content ?? CONTENT;
     this.rng = createRng(opts.seed ?? GAME.seed);
+    this.shotRng = createRng(((opts.seed ?? GAME.seed) ^ 0x5eed5) >>> 0);
     const profile = this.content.ai[opts.difficulty ?? GAME.defaultDifficulty];
     const hp = this.content.ages[0]!.baseHealth;
 
@@ -534,19 +537,29 @@ export class World {
     p.x = unit.x;
     p.y = SHOT_RELEASE_HEIGHT;
     p.z = unit.z;
+    // Natural variation (seeded, so replays match): a somewhat flatter or higher arc, and an aim
+    // point anywhere on the target's body rather than its exact centre. The point stays inside
+    // the hitbox, so a shot that would hit still hits.
+    const r = this.shotRng;
+    const speed = p.def.speed * (0.88 + 0.24 * r());
     let tx: number, ty: number, tz: number;
     if (front) {
       const fdir = teamDir(front.team);
-      tx = front.centerX(fdir);
-      ty = front.def.height * 0.55;
-      tz = front.z;
-      if (front.moving) tx += fdir * front.def.speed * (Math.abs(tx - p.x) / p.def.speed); // lead
+      const aimX = front.centerX(fdir) + (r() - 0.5) * 0.5 * front.def.length;
+      ty = front.def.height * (0.35 + 0.35 * r());
+      tz = front.z + (r() - 0.5) * 0.3;
+      // Lead a walking target by its actual speed (units accelerate and brake): where it will be
+      // after the flight, the flight time itself depending on that point (a few fixed-point steps
+      // converge, the target being much slower than the stone).
+      const lead = front.moving ? fdir * front.vel : 0;
+      tx = aimX;
+      for (let k = 0; k < 3; k++) tx = aimX + lead * (Math.hypot(tx - p.x, tz - p.z) / speed);
     } else {
-      tx = this.baseStop(unit.team) + teamDir(unit.team) * 0.5;
-      ty = GAME.baseAimHeight;
-      tz = 0;
+      tx = this.baseStop(unit.team) + teamDir(unit.team) * (0.3 + 0.5 * r());
+      ty = GAME.baseAimHeight * (0.7 + 0.6 * r());
+      tz = (r() - 0.5) * 1.5;
     }
-    const t = Math.max(0.12, Math.hypot(tx - p.x, tz - p.z) / p.def.speed);
+    const t = Math.max(0.12, Math.hypot(tx - p.x, tz - p.z) / speed);
     p.vx = (tx - p.x) / t;
     p.vz = (tz - p.z) / t;
     p.vy = (ty - p.y + 0.5 * g * t * t) / t;
@@ -596,7 +609,7 @@ export class World {
   }
 
   private impact(p: Projectile, hit: boolean): void {
-    this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit, x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz });
+    this.events.push({ type: 'projectileImpact', projectileId: p.id, defId: p.def.id, hit, x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, age: p.age });
   }
 
   /**
