@@ -48,7 +48,7 @@ export function bindAudio(bus: EventBus, bank: SoundBank, unitOf: UnitLookup = (
     bank.play(UNIT_WEAPON[unitOf(e.sourceId) ?? ''] === 'spear' ? 'spear_hit' : 'club_hit');
   });
   bus.on('projectileImpact', (e) => bank.play(e.hit ? 'stone_hit' : 'stone_miss'));
-  bus.on('hit', (e) => e.targetKind === 'unit' && bank.play('unit_hurt'));
+  bus.on('hit', (e) => e.targetKind === 'unit' && e.damage > 0 && bank.play('unit_hurt'));
   bus.on('death', () => bank.play('unit_death'));
   bus.on('baseDamage', () => bank.play('structure_hit'));
   bus.on('spawn', () => bank.play('unit_spawn'));
@@ -64,12 +64,14 @@ export function swingCue(unitDefId: string): SoundCue {
 
 /**
  * Sound bank on the mixer's sfx channel (separate from music), mixed per cue (src/config/sfx.ts):
- * cue volume, a random take and pitch per play, at most `maxVoices` copies at once and no repeat
- * within `minGap` seconds, so big fights stay readable. Cues without loaded files are only
+ * cue volume, a random (or alternating) take and a random pitch and level per play, at most
+ * `maxVoices` copies at once and no repeat within `minGap` seconds, so big fights stay readable. Cues without loaded files are only
  * counted, so gameplay works before any effect files exist.
  */
 export class MixerSoundBank extends PlaceholderSoundBank {
-  private readonly sounds = new Map<SoundCue, BufferLike[]>();
+  /** Decoded takes per cue, at their index in the cue's `files` (holes until loaded). */
+  private readonly sounds = new Map<SoundCue, Array<BufferLike | undefined>>();
+  private readonly turn = new Map<SoundCue, number>();
   private readonly voices = new Map<SoundCue, number>();
   private readonly lastPlayed = new Map<SoundCue, number>();
   /** Plays actually started (after voice limiting), for tests and debugging. */
@@ -83,19 +85,22 @@ export class MixerSoundBank extends PlaceholderSoundBank {
     super();
   }
 
-  /** Load every file listed in the sfx config (none yet). */
+  /** Load every file listed in the sfx config. */
   async loadAll(fetcher: typeof fetch = fetch): Promise<void> {
-    await Promise.all(Object.entries(this.defs).flatMap(([cue, def]) => def.files.map((f) => this.load(cue as SoundCue, f, fetcher))));
+    await Promise.all(Object.entries(this.defs).flatMap(([cue, def]) => def.files.map((f, i) => this.load(cue as SoundCue, f, fetcher, i))));
   }
 
-  async load(cue: SoundCue, url: string, fetcher: (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }> = fetch): Promise<void> {
+  /** Decode `url` as take `index` of `cue` (default: appended), whatever order loads finish in. */
+  async load(cue: SoundCue, url: string, fetcher: (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }> = fetch, index?: number): Promise<void> {
     const ctx = this.mixer.context();
     if (!ctx) return;
     try {
       const res = await fetcher(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const buf = await ctx.decodeAudioData(await res.arrayBuffer());
-      this.sounds.set(cue, [...(this.sounds.get(cue) ?? []), buf]);
+      const takes = this.sounds.get(cue) ?? [];
+      takes[index ?? takes.length] = buf;
+      this.sounds.set(cue, takes);
     } catch (err) {
       console.warn(`[sfx] ${cue}: could not load ${url} (${(err as Error).message})`);
     }
@@ -103,7 +108,7 @@ export class MixerSoundBank extends PlaceholderSoundBank {
 
   override play(cue: SoundCue): void {
     super.play(cue);
-    const takes = this.sounds.get(cue);
+    const takes = this.sounds.get(cue)?.filter((b): b is BufferLike => b !== undefined);
     const ctx = this.mixer.context();
     const bus = this.mixer.bus('sfx');
     if (!takes?.length || !ctx || !bus || ctx.state !== 'running') return;
@@ -116,10 +121,17 @@ export class MixerSoundBank extends PlaceholderSoundBank {
     this.started[cue] = (this.started[cue] ?? 0) + 1;
 
     const src = ctx.createBufferSource();
-    src.buffer = takes[Math.floor(this.random() * takes.length) % takes.length]!;
+    let take: number;
+    if (def.order === 'alternate') {
+      take = (this.turn.get(cue) ?? 0) % takes.length;
+      this.turn.set(cue, take + 1);
+    } else {
+      take = Math.floor(this.random() * takes.length) % takes.length;
+    }
+    src.buffer = takes[take]!;
     if (src.playbackRate) src.playbackRate.value = 1 + (this.random() * 2 - 1) * def.pitch;
     const gain = ctx.createGain();
-    gain.gain.value = def.volume;
+    gain.gain.value = def.volume * (1 + (this.random() * 2 - 1) * (def.volumeJitter ?? 0));
     src.connect(gain);
     gain.connect(bus);
     src.onended = () => {

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { AudioMixer, type AudioCtxLike, type BufferLike, type GainLike, type ParamLike, type SourceLike } from '../src/audio/AudioMixer';
 import { MusicPlayer } from '../src/audio/MusicPlayer';
@@ -6,6 +8,10 @@ import { bindAudio, MixerSoundBank, PlaceholderSoundBank, swingCue, type SoundCu
 import { SFX } from '../src/config/sfx';
 import { EventBus } from '../src/game/EventBus';
 import { MUSIC, MUSIC_FADE } from '../src/config/music';
+import { GAME } from '../src/config/game';
+import { World } from '../src/sim/World';
+
+const ROOT = join(import.meta.dirname, '..');
 
 /** Records every node and automation call so tests can inspect the audio graph. */
 class FakeParam implements ParamLike {
@@ -36,6 +42,7 @@ class FakeGain implements GainLike {
 }
 class FakeSource implements SourceLike {
   buffer: BufferLike | null = null;
+  playbackRate = new FakeParam();
   loop = false;
   loopStart = 0;
   loopEnd = 0;
@@ -74,7 +81,7 @@ class FakeCtx implements AudioCtxLike {
     this.sources.push(s);
     return s;
   }
-  async decodeAudioData(): Promise<BufferLike> {
+  async decodeAudioData(_data?: ArrayBuffer): Promise<BufferLike> {
     this.decoded++;
     return { duration: 120 };
   }
@@ -229,7 +236,87 @@ describe('audio: sound effects', () => {
     assert.equal(bank.started.unit_hurt, undefined);
   });
 
-  it('no effect files are configured yet (so nothing 404s)', () => {
-    for (const def of Object.values(SFX)) assert.deepEqual(def.files, []);
+  it('every configured effect file exists under public/ and is listed in docs/ASSET_LICENSES.md', () => {
+    const licences = readFileSync(join(ROOT, 'docs', 'ASSET_LICENSES.md'), 'utf8');
+    const files = Object.values(SFX).flatMap((d) => d.files);
+    assert.deepEqual(files.sort(), ['/audio/sfx/death-male.mp3', '/audio/sfx/hit-grunt.mp3', '/audio/sfx/hit-hammer.mp3']);
+    for (const f of files) {
+      assert.ok(existsSync(join(ROOT, 'public', f)), `${f} missing`);
+      assert.ok(licences.includes(`public${f}`), `${f} has no licence row`);
+    }
+  });
+
+  it('hits alternate grunt / hammer whatever order the files finish loading in, with varied pitch and level', async () => {
+    const ctx = new FakeCtx();
+    const mixer = new AudioMixer(() => ctx);
+    let r = 0;
+    const rolls = [0, 1, 0.5, 0.25, 0.9, 0.1, 0.6, 0.4];
+    const bank = new MixerSoundBank(mixer, SFX, () => rolls[r++ % rolls.length]!);
+    // Distinct buffers per URL; the hammer finishes decoding first.
+    const buffers: Record<string, BufferLike> = {};
+    ctx.decodeAudioData = async () => ({ duration: 0.3 });
+    const fetchOf = (url: string) => async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(url.length) });
+    const decode = ctx.decodeAudioData;
+    ctx.decodeAudioData = async (d: ArrayBuffer) => (buffers[d.byteLength] ??= await decode(d));
+    const [grunt, hammer] = SFX.unit_hurt.files as [string, string];
+    await bank.load('unit_hurt', hammer, fetchOf(hammer), 1);
+    await bank.load('unit_hurt', grunt, fetchOf(grunt), 0);
+    const played: BufferLike[] = [];
+    for (let i = 0; i < 4; i++) {
+      ctx.currentTime = 20 + i; // spaced out: no gap or voice limit
+      ctx.sources.forEach((s) => (s as unknown as { onended?: () => void }).onended?.());
+      bank.play('unit_hurt');
+      played.push(ctx.sources.at(-1)!.buffer!);
+    }
+    const g = buffers[grunt.length]!;
+    const h = buffers[hammer.length]!;
+    assert.notEqual(g, h);
+    assert.deepEqual(played.map((b) => (b === g ? 'grunt' : b === h ? 'hammer' : '?')), ['grunt', 'hammer', 'grunt', 'hammer']);
+    const def = SFX.unit_hurt;
+    const levels = ctx.gains.slice(-4).map((x) => x.gain.value);
+    for (const v of levels) assert.ok(v >= def.volume * (1 - def.volumeJitter!) - 1e-9 && v <= def.volume * (1 + def.volumeJitter!) + 1e-9);
+    assert.ok(new Set(levels).size > 1, 'level varies');
+    const rates = ctx.sources.slice(-4).map((s) => s.playbackRate.value);
+    assert.ok(new Set(rates).size > 1, 'pitch varies');
+    for (const v of rates) assert.ok(Math.abs(v - 1) <= def.pitch + 1e-9);
+  });
+
+  it('only blows that deal damage play a hit; each death plays once', () => {
+    const bus = new EventBus();
+    const bank = new PlaceholderSoundBank();
+    bindAudio(bus, bank);
+    bus.dispatch({ type: 'hit', targetKind: 'unit', targetId: 1, team: 'enemy', damage: 0, x: 0, y: 1, z: 0 });
+    bus.dispatch({ type: 'hit', targetKind: 'base', targetId: -1, team: 'enemy', damage: 9, x: 0, y: 1, z: 0 });
+    assert.equal(bank.counts.unit_hurt, undefined);
+    // A real fight: one unit_hurt per damaging hit on a unit, one unit_death per unit death.
+    const w = new World({ ai: false });
+    for (let i = 0; i < 4; i++) w.spawnUnit('player', 'clubman', -6 - i * 2);
+    for (let i = 0; i < 4; i++) w.spawnUnit('enemy', 'clubman', 6 + i * 2);
+    let hits = 0;
+    let deaths = 0;
+    for (let i = 0; i < Math.round(40 / GAME.fixedStep); i++) {
+      w.step(GAME.fixedStep);
+      w.drainEvents((e) => {
+        if (e.type === 'hit' && e.targetKind === 'unit' && e.damage > 0) hits++;
+        if (e.type === 'death') deaths++;
+        bus.dispatch(e);
+      });
+    }
+    assert.ok(deaths >= 4, `deaths ${deaths}`);
+    assert.equal(bank.counts.unit_death, deaths);
+    assert.equal(bank.counts.unit_hurt, hits);
+  });
+
+  it('a big fight cannot stack hit or death sounds past their voice caps', async () => {
+    const ctx = new FakeCtx();
+    const bank = new MixerSoundBank(new AudioMixer(() => ctx), SFX, () => 0.5);
+    for (const [cue, def] of [['unit_hurt', SFX.unit_hurt], ['unit_death', SFX.unit_death]] as const) {
+      for (const [i, f] of def.files.entries()) await bank.load(cue, f, okFetch, i);
+      for (let i = 0; i < 50; i++) {
+        ctx.currentTime = 30 + i * 0.2; // far apart, but none of the (fake) voices ever end
+        bank.play(cue);
+      }
+      assert.equal(bank.started[cue], def.maxVoices);
+    }
   });
 });

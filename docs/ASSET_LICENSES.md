@@ -6,6 +6,7 @@ Originals are kept untouched under `assets_src/` (downloads); processed, game-re
 ## Licence terms in use
 
 - **Poly Haven**: all assets are CC0 1.0 (public domain). Commercial use allowed, no attribution required ("You do not need to give credit"). Source: https://polyhaven.com/license (checked 2026-10-08). The site's own logos, renders and text are not CC0 and are not used.
+- **Freesound**: each sound has its own licence; the three used here are all CC0 1.0 (public domain dedication: commercial use allowed, no attribution required), each checked on its sound page on 2026-10-14.
 - **OpenGameArt, 3TD Cave Pack Pro**: CC0 1.0, released by Ron Kapaun / 3TD Studios. No attribution required (crediting is appreciated). Source page: https://opengameart.org/content/3td-cave-pack-pro-v10 (checked 2026-10-08).
 - **Hyper3D Rodin** (AI-generated models): generated and downloaded by the project owner on the Hyper3D **Creator** plan (confirmed by the owner, 2026-10-13, issue #2; the owner regards the generated models as theirs). Terms of Use (https://hyper3d.ai/legal/terms, checked 2026-10-13): §5(b) for Rodin output, "we will not limit your use of such Output, subject to any restrictions set forth in these Agreements"; §2, export "for private or commercial use depending on your subscription plan"; §5 also says Hyper3D makes no representation that Output is copyrightable. Pricing page (https://hyper3d.ai/pricing, checked 2026-10-13): Creator plan lists "Unlimited export and any use". No attribution requirement is stated. This records what the terms say; it is not a legal opinion, and the terms can change.
 
@@ -60,6 +61,16 @@ None of the assets below require attribution (Hyper3D's terms state none for Rod
 | Track | Artist | Licence | Source | Local file | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Glorious Morning | Waterflame | Licensed to the project owner for this game (owner's licence, 2026-10-08) | https://www.youtube.com/watch?v=7T_YtklLyyo | `public/audio/music/glorious-morning.mp3` | Fetched with `yt-dlp -x --audio-format mp3` at the owner's request; Age 1 gameplay track (`src/config/music.ts`). |
+
+## Sound effects
+
+Downloaded by the owner from Freesound (2026-10-14); originals stay in the owner's Downloads folder, only the processed copies are committed. Processing: ffmpeg, mono 44.1 kHz, MP3 (LAME VBR q3), trimmed with short fades and levelled so the two hit takes match. Wired in `src/config/sfx.ts`.
+
+| Sound | Author | Licence | Source | Local file | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Death sound (male) | Replix | CC0 1.0 | https://freesound.org/s/173126/ | `public/audio/sfx/death-male.mp3` | `173126__replix__death-sound-male.wav`; leading silence trimmed (0.47-1.36 s), +3 dB. Cue `unit_death`. |
+| Grunts_Various Male | SnowFightStudios | CC0 1.0 | https://freesound.org/s/643670/ | `public/audio/sfx/hit-grunt.mp3` | One grunt (2.11-2.45 s) cut from the 16 s, 14-grunt `643670__snowfightstudios__grunts_various-male.mp3`, +1.6 dB. Cue `unit_hurt` (take 1). |
+| hammer 1.aif | zinzan_101 | CC0 1.0 | https://freesound.org/s/91045/ | `public/audio/sfx/hit-hammer.mp3` | `91045__zinzan_101__hammer-1.aiff` (AIFF, which Chrome cannot decode) converted, +9.1 dB to match the grunt. Cue `unit_hurt` (take 2). |
 
 ## Original work
 
