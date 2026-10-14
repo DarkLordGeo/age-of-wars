@@ -201,8 +201,8 @@ describe('audio: sound effects', () => {
     bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'unit', sourceId: 2, mode: 'melee' });
     bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'unit', sourceId: 3, mode: 'ranged' });
     bus.dispatch({ type: 'attack', team: 'player', sourceKind: 'turret', sourceId: 0, mode: 'ranged' });
-    bus.dispatch({ type: 'projectileImpact', projectileId: 1, defId: 'rock', hit: true, x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0 });
-    bus.dispatch({ type: 'projectileImpact', projectileId: 2, defId: 'rock', hit: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+    bus.dispatch({ type: 'projectileImpact', projectileId: 1, defId: 'rock', hit: true, x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, age: 0 });
+    bus.dispatch({ type: 'projectileImpact', projectileId: 2, defId: 'rock', hit: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0 });
     bus.dispatch({ type: 'hit', targetKind: 'unit', targetId: 1, team: 'enemy', damage: 5, x: 0, y: 1, z: 0 });
     bus.dispatch({ type: 'baseDamage', team: 'enemy', damage: 16, health: 400 });
     bus.dispatch({ type: 'death', unitId: 1, team: 'enemy', killerTeam: 'player' });

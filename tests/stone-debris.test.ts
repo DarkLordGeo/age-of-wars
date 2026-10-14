@@ -112,7 +112,7 @@ describe('stone debris (render)', () => {
 
   it('a stone that hits drops at the target instead of flying on', () => {
     const debris = new StoneDebris(flat);
-    const hit: Impact = { type: 'projectileImpact', projectileId: 7, defId: 'sling_stone', hit: true, x: 3, y: 1.2, z: 0, vx: 14, vy: -2, vz: 0 };
+    const hit: Impact = { type: 'projectileImpact', projectileId: 7, defId: 'sling_stone', hit: true, x: 3, y: 1.2, z: 0, vx: 14, vy: -2, vz: 0, age: 0.4 };
     const s = landStone(debris, hit, STONE, flat)!;
     settle(debris, flat, 3);
     assert.ok(s.asleep && Math.abs(s.x - 3) < 0.6, `rests at x=${s.x.toFixed(2)}, by the target`);
