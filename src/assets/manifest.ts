@@ -31,6 +31,9 @@ export function createAssetLibrary(): AssetLibrary {
     url: '/models/slingshot.glb',
     placeholder: createArcherPlaceholder,
     expectedHeight: 1.8,
+    // Same rig as the Clubman: Walking (0.912x) and Start Walking; Run Forward 2.999 m per
+    // 27-frame cycle at 1.08x (25 frames) = 3.598 m/s.
+    gaitSpeed: { walk: 1.5, run: 3.598 },
     strike: 0.53, // the pouch is released at frame 16 of the shot
     partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ },
   });

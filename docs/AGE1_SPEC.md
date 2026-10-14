@@ -72,6 +72,7 @@ Labels used below: **CONFIRMED** = taken from [UC] code that the author derived 
 | Ranged range | **100 units (8.9 m)**, measured as gap minus `MIN_DISTANCE` (20) | [UC] `troop_ranged_ranges[1]`, `check_attacking` | CONFIRMED |
 | Shot interval, standing | 0.8 + 20/41 = **1.29 s** | [UC] `troop_ranged_speeds[1]` (`ranged_standing_speed`) + `attack_pause` | CONFIRMED |
 | Shot interval, walking | 1.07 + 20/41 = **1.56 s**; **it fires while still walking** | [UC] `troop_walking_ranged_speeds[1]`; `attack_range` picks walking/standing by `is_moving` | CONFIRMED |
+| *This project (owner's request, 2026-10-14)* | **Deliberate change:** he stops advancing once the enemy front (or base) is within his range and fires standing (`holdAtRange` in `src/config/physics.ts`); the walking interval only applies while he is still closing in. He also walks (1.5 m/s) the last 2.4 m to his firing position or queue spot, like the Clubman. | `src/config/physics.ts`, `World.updateUnit` | CHANGED |
 | First shot delay | 0 s | [UC] `ranged_first_speed = 0` | CONFIRMED |
 | Projectile | **no simulated projectile**: damage is applied instantly to the first enemy; the stone is cosmetic | [UC] `give_damage`; [GD] raycast `do_damage` on frame 22 (idle) / 23 (walking) | CONFIRMED in both recreations; the original's internal model is UNKNOWN beyond this |
 | Kill reward | gold 33, XP 66 to the killer; 16 XP to the owner when it dies | [UC] formula, [GD] `money_die_reward = 33` | CONFIRMED |

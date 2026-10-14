@@ -8,9 +8,14 @@
  * - `knockResist` (0..1): share of a blow's knock-back the unit ignores (render-only push; the sim's
  *   lane position never changes on hits, as in the original game).
  * - `mass` (kg) is descriptive: it is what the other numbers were chosen from.
- * - `walk` (optional, melee units): a walking gait for short approaches. Units run over long
- *   distances and drop to a walk when the free room ahead is short and what is ahead is not
- *   running away (the enemy front, a stopped or walking ally in the queue, the enemy base).
+ * - `walk` (optional): a walking gait for short approaches. Units run over long distances and
+ *   drop to a walk when the free room ahead is short and what is ahead is not running away (the
+ *   enemy front, a stopped or walking ally in the queue, the enemy base, or for `holdAtRange`
+ *   units their firing position).
+ * - `holdAtRange` (ranged units): stop advancing once the enemy front (or base) is within shot
+ *   range. A deliberate change from the original, whose Slingshot Man fires while still walking
+ *   up to the spacing gap (docs/AGE1_SPEC.md section 3): he now stands and fires, so he uses the
+ *   standing shot interval (1.29 s) where the original used the walking one (1.56 s).
  */
 export interface UnitPhysics {
   mass: number;
@@ -19,6 +24,7 @@ export interface UnitPhysics {
   turnRate: number;
   knockResist: number;
   walk?: Gait;
+  holdAtRange?: boolean;
 }
 
 /**
@@ -37,9 +43,12 @@ export interface Gait {
   hold: number;
 }
 
+/** The cavemen's walk (both models share Mixamo's Walking / Start Walking, authored at 1.5 m/s). */
+const CAVEMAN_WALK: Gait = { speed: 1.5, accel: 1, enter: 2.4, exit: 4, hold: 0.4 };
+
 export const UNIT_PHYSICS: Record<string, UnitPhysics> = {
-  clubman: { mass: 70, accel: 18, decel: 22, turnRate: 9, knockResist: 0, walk: { speed: 1.5, accel: 1, enter: 2.4, exit: 4, hold: 0.4 } },
-  slingshot: { mass: 65, accel: 20, decel: 24, turnRate: 9.5, knockResist: 0 },
+  clubman: { mass: 70, accel: 18, decel: 22, turnRate: 9, knockResist: 0, walk: CAVEMAN_WALK },
+  slingshot: { mass: 65, accel: 20, decel: 24, turnRate: 9.5, knockResist: 0, walk: CAVEMAN_WALK, holdAtRange: true },
   dino: { mass: 1200, accel: 3.6, decel: 4.5, turnRate: 3, knockResist: 0.85 },
 };
 

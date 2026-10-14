@@ -381,6 +381,11 @@ export class World {
     }
     const top = this.teams[unit.team].stat('units', 'speed', def.speed);
     const phys = physicsOf(def.id);
+    if (phys.holdAtRange && def.ranged) {
+      // Walk up to the firing position and hold there (same reach rule as the ranged check below).
+      const reach = front ? (front.x - unit.x) * dir - GAME.minUnitGap : (this.baseStop(unit.team) - unit.x) * dir;
+      room = Math.min(room, reach - def.ranged.range);
+    }
     const free = Math.max(0, room);
     // Gait: run over distance, walk the last few metres to the enemy, the base or a halted queue.
     // The ally ahead is updated first, so its gait this tick is known; following a running ally

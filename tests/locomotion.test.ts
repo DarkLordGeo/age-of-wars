@@ -150,16 +150,80 @@ describe('locomotion gaits (sim)', () => {
     assert.equal(nextGait('walk', WALK.hold / 2, WALK.exit + 5, false, WALK), 'walk', 'minimum time in a gait');
   });
 
-  it('only melee units with a walking gait walk; the Slingshot Man and the Dino Rider always run', () => {
-    assert.equal(physicsOf('slingshot').walk, undefined);
+  it('the Dino Rider has no walking gait and always runs', () => {
     assert.equal(physicsOf('dino').walk, undefined);
     const w = makeWorld();
-    const s = w.spawnUnit('player', 'slingshot', -10);
-    const d = w.spawnUnit('player', 'dino', -1);
+    const d = w.spawnUnit('player', 'dino', -10);
     w.spawnUnit('enemy', 'clubman', 2).health = 1e6;
-    step(w, 6, () => {
-      assert.equal(s.gait, 'run');
-      assert.equal(d.gait, 'run');
+    step(w, 6, () => assert.equal(d.gait, 'run'));
+  });
+
+  describe('Slingshot Man', () => {
+    const SLING = UNITS.slingshot!.ranged!;
+    /** Gap minus the spacing, the distance his range is measured over (World.updateUnit). */
+    const reachOf = (s: Unit, foe: Unit) => foe.x - s.x - GAME.minUnitGap;
+
+    it('runs from afar, walks the last metres and holds at his firing position', () => {
+      assert.equal(physicsOf('slingshot').walk, WALK, 'same gait as the Clubman');
+      const w = makeWorld();
+      const s = w.spawnUnit('player', 'slingshot', -30);
+      s.health = 1e6;
+      const foe = w.spawnUnit('enemy', 'dino', 10);
+      foe.health = 1e6;
+      w.alive.enemy.forEach((e) => Object.assign(e, { def: { ...e.def, speed: 0 } })); // a target that waits
+      const seen: string[] = [];
+      let ranInRange = false;
+      step(w, 14, () => {
+        if (seen.at(-1) !== s.gait) seen.push(s.gait);
+        if (s.gait === 'run' && reachOf(s, foe) - SLING.range < WALK.enter - 0.5) ranInRange = true;
+      });
+      assert.deepEqual(seen, ['run', 'walk']);
+      assert.equal(ranInRange, false);
+      assert.equal(s.moving, false, 'stands once in range');
+      assert.ok(Math.abs(reachOf(s, foe) - SLING.range) < 0.02, `holds ${reachOf(s, foe).toFixed(2)} m out (range ${SLING.range.toFixed(2)})`);
+      assert.ok(foe.x - s.x > 5, 'nowhere near the spacing gap: he does not walk on toward the enemy');
+    });
+
+    it('fires at the standing interval while holding, and moves on when his target is gone', () => {
+      const w = makeWorld();
+      const s = w.spawnUnit('player', 'slingshot', -20);
+      s.health = 1e6;
+      const foe = w.spawnUnit('enemy', 'dino', 0);
+      foe.health = 1e6;
+      Object.assign(foe, { def: { ...foe.def, speed: 0 } });
+      const shots: number[] = [];
+      const log = new EventLog();
+      step(w, 14, () => {
+        for (const e of log.all.splice(0)) if (e.type === 'attack' && e.sourceId === s.id) shots.push(w.time);
+      }, log);
+      const standing = shots.slice(-3);
+      for (let i = 1; i < standing.length; i++) assert.ok(Math.abs(standing[i]! - standing[i - 1]! - SLING.intervalStanding) <= DT + 1e-9);
+      const held = s.x;
+      foe.health = 0; // the target falls: the lane ahead is empty up to the enemy base
+      step(w, 2);
+      assert.ok(s.x > held + 1, 'advances again');
+    });
+
+    it('queues at a walk behind a halted ally when the enemy is still out of range', () => {
+      const w = makeWorld();
+      w.spawnUnit('enemy', 'dino', 0).health = 1e6;
+      const slot = GAME.minUnitGap + UNITS.clubman!.length;
+      const queue = [0, 1, 2, 3].map((i) => w.spawnUnit('player', 'clubman', -GAME.minUnitGap - i * slot));
+      queue.forEach((c) => (c.health = 1e6));
+      const last = queue.at(-1)!;
+      const s = w.spawnUnit('player', 'slingshot', last.x - slot - 2.2);
+      s.health = 1e6;
+      const x0 = s.x;
+      let ran = false;
+      step(w, 6, () => {
+        if (s.gait === 'run' && s.moving) ran = true;
+        assert.ok(s.x <= last.x - last.def.length - GAME.minUnitGap + 1e-6);
+      });
+      assert.ok(w.alive.enemy[0]!.x - s.x - GAME.minUnitGap > SLING.range, 'the enemy front is out of his range');
+      assert.ok(s.x > x0 + 2, 'he moved up into the queue');
+      assert.ok(Math.abs(s.x - (last.x - last.def.length - GAME.minUnitGap)) < 0.02, 'to the queue spot');
+      assert.equal(ran, false, 'at a walk');
+      assert.equal(s.moving, false);
     });
   });
 

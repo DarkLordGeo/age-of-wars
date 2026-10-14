@@ -17,12 +17,14 @@ import { DT, makeWorld } from './helpers';
 
 const KEY = 'unit.clubman';
 
-async function library(): Promise<AssetLibrary> {
-  const buf = readFileSync(join(import.meta.dirname, '..', 'public', 'models', 'clubman.glb'));
+const SLING_KEY = 'unit.slingshot';
+
+async function library(key = KEY, file = 'clubman.glb', gaitSpeed = { walk: 1.5, run: 3.526 }): Promise<AssetLibrary> {
+  const buf = readFileSync(join(import.meta.dirname, '..', 'public', 'models', file));
   const gltf = await new GLTFLoader().parseAsync(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '');
   const lib = new AssetLibrary();
-  lib.register(KEY, { placeholder: createSoldierPlaceholder, expectedHeight: 1.8, strike: 0.3, gaitSpeed: { walk: 1.5, run: 3.526 } });
-  lib.registerLoaded(KEY, gltf as LoadedGltf);
+  lib.register(key, { placeholder: createSoldierPlaceholder, expectedHeight: 1.8, strike: 0.3, gaitSpeed });
+  lib.registerLoaded(key, gltf as LoadedGltf);
   return lib;
 }
 
@@ -45,17 +47,21 @@ interface Trace {
  * drives the model and how far the planted foot slides on the ground (the slower of ankle and
  * ball of the foot, of the lower foot, while it is within 4 cm of that clip's lowest step).
  */
-function setOff(lib: AssetLibrary, room: number, locomotion: Locomotion, seconds = 5, at = 0): Trace {
+function setOff(lib: AssetLibrary, room: number, locomotion: Locomotion, seconds = 5, at = 0, who = { key: KEY, unit: 'clubman', queue: 1 }): Trace {
   const w = makeWorld();
-  // A halted ally `room` metres ahead (fighting a Dino Rider further on): a queue to move up in.
-  const lead = w.spawnUnit('player', 'clubman', at);
-  lead.health = 1e6;
+  // A halted queue of `who.queue` Clubmen (fighting a Dino Rider further on), `room` metres ahead.
   w.spawnUnit('enemy', 'dino', at + GAME.minUnitGap).health = 1e6;
-  const u = w.spawnUnit('player', 'clubman', at - lead.def.length - GAME.minUnitGap - room);
+  let lead = w.spawnUnit('player', 'clubman', at);
+  lead.health = 1e6;
+  for (let i = 1; i < who.queue; i++) {
+    lead = w.spawnUnit('player', 'clubman', lead.x - lead.def.length - GAME.minUnitGap);
+    lead.health = 1e6;
+  }
+  const u = w.spawnUnit('player', who.unit, lead.x - lead.def.length - GAME.minUnitGap - room);
   u.health = 1e6;
   w.step(DT); // the renderer binds views after the step that spawned the unit
   w.drainEvents(() => undefined);
-  const v = new UnitView(KEY, lib.instantiate(KEY, 1), lib.clipsFor(KEY), { variants: lib.clipVariantsFor(KEY), locomotion });
+  const v = new UnitView(who.key, lib.instantiate(who.key, 1), lib.clipsFor(who.key), { variants: lib.clipVariantsFor(who.key), locomotion });
   v.bind(u);
   const model = v.root.children[0]!;
   const joints = ['Left', 'Right'].map((s) => [`mixamorig${s}Foot`, `mixamorig${s}ToeBase`].map((n) => v.root.getObjectByName(n)!));
@@ -173,6 +179,21 @@ describe('Start Walking -> Walking (Clubman)', () => {
     const walk = setOff(lib, 3.9, lib.locomotionFor(KEY)); // runs, then walks the last metres
     assert.deepEqual(walk.clips.map((c) => c.clip), ['run', 'walk', 'idle']);
     assert.ok(Math.abs(walk.slip.walk!.slip) < 0.05, `walk slip ${walk.slip.walk!.slip.toFixed(3)} m/s`);
+  });
+
+  it('Slingshot Man (same rig): Start Walking into a queue, then holds; run and walk without sliding', async () => {
+    const lib = await library(SLING_KEY, 'slingshot.glb', { walk: 1.5, run: 3.598 });
+    const loco = lib.locomotionFor(SLING_KEY);
+    assert.ok(loco.start, 'slingshot.glb ships Start Walking');
+    const who = { key: SLING_KEY, unit: 'slingshot', queue: 4 }; // queue long enough to be out of range
+    const q = setOff(lib, 2.2, loco, 4, 0, who);
+    assert.deepEqual(q.clips.map((c) => c.clip), ['start', 'walk', 'idle']);
+    assert.ok(q.startEnd! > loco.start!.exit - 0.1);
+    assert.ok(Math.abs(q.slip.start!.slip) < 0.05, `start slip ${q.slip.start!.slip.toFixed(3)}`);
+    const far = setOff(lib, 26, loco, 12, 0, who); // runs, then walks up to the queue
+    assert.deepEqual(far.clips.map((c) => c.clip), ['run', 'walk', 'idle']);
+    assert.ok(Math.abs(far.slip.run!.slip) < 0.15, `run slip ${far.slip.run!.slip.toFixed(3)} at ${far.slip.run!.speed.toFixed(2)} m/s`);
+    assert.ok(Math.abs(far.slip.walk!.slip) < 0.05, `walk slip ${far.slip.walk!.slip.toFixed(3)}`);
   });
 
   it('the sim sets off into a walk at the walking gait acceleration', () => {
