@@ -215,9 +215,24 @@ export class UnitView {
     this.update(0, null);
   }
 
-  triggerAttack(): void {
-    if (this.animator) this.animator.playOnce('attack');
-    else this.lunge = LUNGE_TIME;
+  /**
+   * The sim struck (`mode` of the blow). Strike-synced swings are already playing by now (started
+   * early, see syncSwing), so this only starts the blow's clip when it is not playing yet (models
+   * without strike timing); it must never cut a running swing short, e.g. the Slingshot Man's
+   * punch with his sling shot.
+   */
+  triggerAttack(mode: 'melee' | 'ranged' = 'ranged'): void {
+    if (!this.animator) {
+      this.lunge = LUNGE_TIME;
+      return;
+    }
+    const clip = mode === 'melee' && this.usesFists() ? 'melee' : 'attack';
+    if (this.animator.playing !== clip) this.animator.playOnce(clip);
+  }
+
+  /** A ranged unit fighting hand to hand with its own `melee` clip (Slingshot Man's fists). */
+  private usesFists(): boolean {
+    return !!this.unit.def.ranged && this.opts.meleeStrike !== undefined && !!this.animator?.has('melee');
   }
 
   /** Struck: a small knock-back, and a flinch on models with a `hit` clip (never cuts a swing). */
@@ -326,7 +341,7 @@ export class UnitView {
     const u = this.unit;
     const melee = u.meleeTimer !== null;
     // A ranged unit fighting hand to hand throws its own blow (`melee` clip), if the model has one.
-    const fists = melee && !!u.def.ranged && this.opts.meleeStrike !== undefined && !!this.animator?.has('melee');
+    const fists = melee && this.usesFists();
     const strike = fists ? this.opts.meleeStrike : this.opts.strike;
     const clip = fists ? 'melee' : 'attack';
     const timer = melee ? u.meleeTimer : u.def.ranged ? u.rangedTimer : null;

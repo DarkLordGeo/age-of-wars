@@ -173,22 +173,34 @@ describe('Slingshot Man: fist-fight animation (real slingshot.glb)', () => {
     });
     v.bind(s);
     const onHit: Array<{ clip: string | null; time: number }> = [];
+    const afterHit: Array<string | null> = [];
+    let since = -1;
     for (let i = 0; i < Math.round(14 / DT); i++) {
       w.step(DT);
       let melee = false;
       w.drainEvents((e) => {
-        if (e.type === 'attack' && e.sourceKind === 'unit' && e.sourceId === s.id && e.mode === 'melee') melee = true;
+        if (e.type === 'attack' && e.sourceKind === 'unit' && e.sourceId === s.id) {
+          v.triggerAttack(e.mode); // exactly as GameRenderer forwards attack events
+          if (e.mode === 'melee') melee = true;
+        }
       });
       v.update(DT, null);
-      if (melee) onHit.push({ clip: v.animator!.playing, time: v.animator!.time });
+      if (melee) {
+        onHit.push({ clip: v.animator!.playing, time: v.animator!.time });
+        since = 0;
+      } else if (since >= 0 && ++since === 10) {
+        afterHit.push(v.animator!.playing); // what plays just after the blow landed
+        since = -1;
+      }
     }
     assert.ok(foe.health < 1e6);
-    return onHit;
+    return Object.assign(onHit, { afterHit });
   }
 
-  it('throws the punch so the fist lands on the damage tick', async () => {
+  it('throws the punch so the fist lands on the damage tick, and follows through (not cut by the sling shot)', async () => {
     const hits = await fight(true);
     assert.ok(hits.length >= 3);
+    for (const after of hits.afterHit) assert.equal(after, 'melee', 'the punch plays on after the blow lands');
     for (const h of hits) {
       assert.equal(h.clip, 'melee');
       assert.ok(Math.abs(h.time - 0.45) < 2.5 * DT + 0.05, `clip at ${h.time.toFixed(3)} s when the blow landed`);
