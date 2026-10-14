@@ -20,6 +20,9 @@ export function createAssetLibrary(): AssetLibrary {
     placeholder: createSoldierPlaceholder,
     expectedHeight: 1.8,
     strike: 0.3, // attack clip: the club comes down ~9 frames in (Double Dagger Stab 26-46)
+    // Walking: 1.701 m per 31-frame cycle at 0.912x; Slow Run: 2.115 m per 22 frames at 1.222x
+    // (mixamo_build.py rates, snapped to whole frames). `start` is Mixamo's Start Walking.
+    gaitSpeed: { walk: 1.5, run: 3.526 },
   });
   // Slingshot Man: the same Mixamo-rigged caveman with a slingshot in the left fist, the Run
   // Forward run, and a keyed upper-body shot layered over the running/idling legs
@@ -28,6 +31,9 @@ export function createAssetLibrary(): AssetLibrary {
     url: '/models/slingshot.glb',
     placeholder: createArcherPlaceholder,
     expectedHeight: 1.8,
+    // Same rig as the Clubman: Walking (0.912x) and Start Walking; Run Forward 2.999 m per
+    // 27-frame cycle at 1.08x (25 frames) = 3.598 m/s.
+    gaitSpeed: { walk: 1.5, run: 3.598 },
     strike: 0.53, // the pouch is released at frame 16 of the shot
     partial: { attack: /Spine|Neck|Head|Shoulder|Arm|Hand/ },
   });

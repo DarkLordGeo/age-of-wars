@@ -3,7 +3,7 @@ import type { Content } from '../config/schema';
 import { currentAge } from '../sim/progression';
 import type { World } from '../sim/World';
 import { evolveTip } from './evolve';
-import { ICONS } from './icons';
+import { COIN, ICONS } from './icons';
 
 export interface HudHandlers {
   onEnqueue: (unitId: string) => void;
@@ -62,7 +62,7 @@ export class Hud {
     root.innerHTML = `
       <div class="topbar">
       <div class="plank purse">
-        <div class="gold"><i class="coin"></i><span data-id="gold"></span></div>
+        <div class="gold"><i class="coin">${COIN}</i><span data-id="gold"></span></div>
         <div class="exp">Exp: <b data-id="xp"></b><small data-id="xpnext"></small></div>
         <div class="age" data-id="age"></div>
       </div>

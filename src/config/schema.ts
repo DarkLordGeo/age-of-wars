@@ -60,10 +60,12 @@ export interface ProjectileDef {
   /** Visual size (m). */
   size: number;
   color: number;
-  /** Peak height (m) of the cosmetic arc for instant-hit unit shots. */
-  arcHeight: number;
+  /** Gravity (m/s^2) on the projectile: 0 flies straight (turrets), >0 a ballistic arc. */
+  gravity: number;
   /** Mesh family the renderer uses. */
   shape: 'stone' | 'egg' | 'boulder';
+  /** Stays on the battlefield as debris after it comes down (config/debris.ts). */
+  persists?: boolean;
 }
 
 export interface TurretDef {

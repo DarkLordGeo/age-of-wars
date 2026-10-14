@@ -7,7 +7,18 @@ const FADE = 0.12;
  * One-shots only interrupt one-shots of equal or lower priority: a flinch never cuts a swing
  * short, and nothing interrupts a death.
  */
-const PRIORITY: Partial<Record<ClipName, number>> = { hit: 1, attack: 2, death: 3 };
+const PRIORITY: Partial<Record<ClipName, number>> = { warmup: 0, hit: 1, attack: 2, death: 3 };
+
+/**
+ * Idle variations: full-body one-shots that give way to everything. Any one-shot overrides them
+ * (priority 0) and any loop other than `idle` cuts them off, blending out over their fade.
+ */
+const INTERRUPTIBLE: ReadonlySet<ClipName> = new Set<ClipName>(['warmup']);
+/** Slower blends in and out of these clips (long, whole-body motions). */
+const FADES: Partial<Record<string, number>> = { warmup: 0.3 };
+
+/** Locomotion cycles: switching between them keeps the stride's phase (same foot forward). */
+const GAITS: ReadonlySet<ClipName> = new Set<ClipName>(['walk', 'run']);
 
 const qa = new Quaternion();
 const qb = new Quaternion();
@@ -20,7 +31,7 @@ function nodesOf(clip: AnimationClip): Set<string> {
 
 /**
  * Per-instance animation state for one cloned GLB: its own mixer and actions, so pooled
- * units never share playback state. Looping clips (idle/walk) crossfade; one-shots
+ * units never share playback state. Looping clips (idle/walk/run) crossfade; one-shots
  * (hit, attack, death) hold the model until finished. Death clamps on its last frame.
  *
  * Partial one-shots (a clip that animates only some of the bones the loops drive, e.g. an
@@ -51,6 +62,14 @@ export class ModelAnimator {
   private readonly complements = new Map<string, AnimationAction>();
   private loopRate = 1;
   private attackRate = 1;
+  /** Gait speed factor of the loop (setLoopSpeed): stride timing follows the ground speed. */
+  private speed = 1;
+  /**
+   * This unit's loop phase (fraction of a cycle), drawn once when its first loop starts so
+   * identical units are out of step. Later loops start from it too: no new random jump on
+   * every idle/walk switch.
+   */
+  private phase0: number | null = null;
 
   /**
    * `variants` (optional) adds alternative takes per clip; one-shots pick one at random each
@@ -67,8 +86,11 @@ export class ModelAnimator {
       const takes = variants?.get(name)?.length ? variants.get(name)! : [clip];
       this.actions.set(name, takes.map((c) => this.mixer.clipAction(c)));
     }
-    const loop = clips.get('idle') ?? clips.get('walk');
-    this.loopNodes = loop ? nodesOf(loop) : new Set();
+    this.loopNodes = new Set();
+    for (const n of ['idle', 'walk', 'run'] as const) {
+      const c = clips.get(n);
+      if (c) for (const node of nodesOf(c)) this.loopNodes.add(node);
+    }
     this.mixer.addEventListener('finished', (e) => this.onFinished(e.action as AnimationAction));
   }
 
@@ -106,12 +128,48 @@ export class ModelAnimator {
     return this.actions.has(name);
   }
 
-  /** Loop `name` unless a full-body one-shot is still running. No-op if already playing. */
-  playLoop(name: ClipName): void {
+  /**
+   * Scale the loop's playback (on top of the per-unit rate) so a gait's stride matches how fast
+   * the unit actually moves, e.g. while accelerating or slowing to a walk. 1 = authored speed.
+   */
+  setLoopSpeed(scale: number): void {
+    if (scale === this.speed) return;
+    this.speed = scale;
+    if (this.loopAction) this.loopAction.timeScale = this.rateOf(this.loopName) * scale;
+  }
+
+  /**
+   * Loop `name` unless a full-body one-shot is still running. No-op if already playing.
+   * `phase` (0..1) starts it at that point of its cycle (e.g. matched to the outgoing pose).
+   */
+  playLoop(name: ClipName, phase?: number): void {
+    if (this.shotName && INTERRUPTIBLE.has(this.shotName) && name !== 'idle') this.cancel(this.shotName);
     if ((this.shotName && !this.mask) || this.loopName === name) return;
     const take = this.actions.get(name)?.[0];
     if (!take) return;
-    this.swapLoop(this.mask ? this.complement(name, take) : take, name, false);
+    this.swapLoop(this.mask ? this.complement(name, take) : take, name, false, phase);
+  }
+
+  /** Stop one-shot `name` if it is running, blending it out; the next loop takes over. */
+  cancel(name: ClipName): void {
+    if (this.shotName !== name || !this.shotAction) return;
+    this.shotAction.fadeOut(FADES[name] ?? FADE);
+    this.shotName = null;
+    this.shotAction = null;
+    this.mask = null;
+    this.anchors = [];
+  }
+
+  /** Name of the running loop (null while a full-body one-shot holds the model). */
+  get loop(): ClipName | null {
+    return this.loopName;
+  }
+
+  /** Pose the running loop at `time` (s) and hold it there (time-driven clips, e.g. `start`). */
+  scrub(time: number): void {
+    if (!this.loopAction) return;
+    this.setLoopSpeed(0);
+    this.loopAction.time = time;
   }
 
   /**
@@ -128,13 +186,14 @@ export class ModelAnimator {
     const partial = this.loopAction !== null && this.loopName !== null && nodes.size < this.loopNodes.size &&
       [...nodes].every((n) => this.loopNodes.has(n));
 
-    this.shotAction?.fadeOut(FADE);
+    const fade = Math.max(FADES[name] ?? FADE, (this.shotName && FADES[this.shotName]) || FADE);
+    this.shotAction?.fadeOut(fade);
     this.releaseLingering(next);
     next.reset();
     next.setLoop(LoopOnce, 1);
     next.clampWhenFinished = true;
     next.timeScale = name === 'attack' ? this.attackRate : 1;
-    next.fadeIn(this.loopAction || this.shotAction ? FADE : 0).play();
+    next.fadeIn(this.loopAction || this.shotAction ? fade : 0).play();
     if (partial) {
       const wasMasked = this.mask !== null;
       this.mask = nodes;
@@ -142,7 +201,7 @@ export class ModelAnimator {
       if (!wasMasked) this.swapLoop(this.complement(this.loopName!, this.actions.get(this.loopName!)![0]!), this.loopName!, true);
     } else {
       this.mask = null;
-      this.loopAction?.fadeOut(FADE);
+      this.loopAction?.fadeOut(fade);
       this.loopAction = null;
       this.loopName = null;
     }
@@ -192,10 +251,12 @@ export class ModelAnimator {
     this.loopAction = this.shotAction = this.lingering = null;
     this.mask = null;
     this.anchors = [];
+    this.speed = 1;
+    this.phase0 = null;
   }
 
   private releaseLingering(next: AnimationAction): void {
-    if (this.lingering && this.lingering !== next) this.lingering.fadeOut(FADE);
+    if (this.lingering && this.lingering !== next) this.lingering.fadeOut(FADES[this.lingering.getClip().name] ?? FADE);
     this.lingering = null;
   }
 
@@ -214,16 +275,23 @@ export class ModelAnimator {
     this.mask = null;
   }
 
-  /** Crossfade the loop to `next` (a full take or a complement), optionally keeping the phase. */
-  private swapLoop(next: AnimationAction, name: ClipName, keepPhase: boolean): void {
+  /**
+   * Crossfade the loop to `next` (a full take or a complement). The new loop continues the old
+   * one's cycle when `keepPhase` (same clip, re-layered) or when both are gaits (walk <-> run keep
+   * the stride); otherwise it starts at this unit's own phase.
+   */
+  private swapLoop(next: AnimationAction, name: ClipName, keepPhase: boolean, phase?: number): void {
     const prev = this.loopAction;
     if (prev === next) return;
     this.releaseLingering(next);
-    const phase = prev && keepPhase ? prev.time : this.random() * next.getClip().duration; // random loop phase
+    this.phase0 ??= this.random();
+    const dur = next.getClip().duration;
+    const carry = prev && (keepPhase || (GAITS.has(name) && this.loopName !== null && GAITS.has(this.loopName)));
+    const frac = phase ?? (carry ? prev.time / prev.getClip().duration : this.phase0);
     next.reset();
     next.setLoop(LoopRepeat, Infinity);
-    next.timeScale = this.loopRate;
-    next.time = phase;
+    next.timeScale = this.rateOf(name) * this.speed;
+    next.time = (frac % 1) * dur;
     if (prev) {
       next.fadeIn(FADE).play();
       prev.fadeOut(FADE);
@@ -232,6 +300,14 @@ export class ModelAnimator {
     }
     this.loopAction = next;
     this.loopName = name;
+  }
+
+  /**
+   * Per-unit playback rate of a loop. Gait loops (walk/run) play at their stride-matched speed
+   * only: a rate offset there would make the feet slide. Units still differ by their loop phase.
+   */
+  private rateOf(name: ClipName | null): number {
+    return name && GAITS.has(name) ? 1 : this.loopRate;
   }
 
   /** `loop`'s take without the tracks of the running partial one-shot (cached). */

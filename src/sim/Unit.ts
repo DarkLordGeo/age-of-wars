@@ -11,6 +11,12 @@ export class Unit {
   state: UnitState = 'advancing';
   /** True while walking this tick (ranged units use the slower walking fire rate). */
   moving = true;
+  /** Current walking speed (m/s): ramps up/down with the unit's acceleration (config/physics.ts). */
+  vel = 0;
+  /** Locomotion gait (units with a walking gait in config/physics.ts; others always run). */
+  gait: 'run' | 'walk' = 'run';
+  /** Seconds in the current gait (decides immediately at spawn). */
+  gaitFor = Infinity;
   /** Seconds to the next melee hit / ranged shot; null when that routine is not running. */
   meleeTimer: number | null = null;
   rangedTimer: number | null = null;

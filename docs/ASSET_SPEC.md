@@ -32,6 +32,14 @@ Names are case-insensitive. Blender's `Armature|walk` style also works (text aft
 | `walk` | loops | advancing or closing on a target |
 | `attack` | once | each time the unit swings or fires; keep it ≲ 0.8 s |
 | `death` | once, holds the last frame | unit dies; the body lingers 1.6 s then is removed |
+| `run` *(optional)* | loops | the long-distance gait; with it, `walk` is the walking gait for short approaches and queueing |
+| `start` *(optional)* | driven by distance | setting off from a standstill into a walk; export it **with** its root (hips) travel, the game takes the travel out and plays the clip by how far the unit has moved, then hands over to `walk` at the best-matching pose |
+| `hit` *(optional)* | once | a short flinch when struck |
+
+Locomotion loops are in place (no root travel) and must loop seamlessly (last frame = first pose,
+a whole number of frames). Give the ground speed each loop is authored for (stride length / cycle
+time at playback rate 1) as `gaitSpeed` in `src/assets/manifest.ts`, so stride follows the
+unit's speed without sliding.
 
 Blender export: Animation → "Always sample", enable "NLA tracks" or push each action to its own
 NLA strip so all four export; Armature "Deform bones only"; Normals + Skinning on.
