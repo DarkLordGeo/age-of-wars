@@ -6,7 +6,7 @@ Licence notes: `docs/ASSET_LICENSES.md`.
 | Game file | Rodin prompt |
 |---|---|
 | `public/models/caveman_slingshot.glb` | Prehistoric man using a slingshot |
-| `public/models/stone_hut.glb` | A small stone hut structure |
+| `public/models/stone_hut.glb` | The base: a boulder cave with an arched doorway (2026-10-14, #45; built with `cave_build.py`) |
 
 Rodin exports are ~500k triangles with 2K textures split into many UV islands, which blocks
 normal simplification. `bake.mjs` samples the base-colour texture into vertex colours, welds the
