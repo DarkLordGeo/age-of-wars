@@ -13,5 +13,5 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
   rock: { id: 'rock', speed: TURRET_SPEED, size: 0.32, color: 0x8a8378, gravity: 0, shape: 'stone' },
   egg: { id: 'egg', speed: TURRET_SPEED, size: 0.24, color: 0xf3ead2, gravity: 0, shape: 'egg' },
   boulder: { id: 'boulder', speed: TURRET_SPEED, size: 0.7, color: 0x7d776c, gravity: 0, shape: 'boulder' },
-  sling_stone: { id: 'sling_stone', speed: 14, size: 0.16, color: 0x8f877a, gravity: 9.8, shape: 'stone' },
+  sling_stone: { id: 'sling_stone', speed: 14, size: 0.16, color: 0x8f877a, gravity: 9.8, shape: 'stone', persists: true },
 };

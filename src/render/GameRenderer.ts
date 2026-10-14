@@ -9,6 +9,9 @@ import { CameraRig } from './CameraRig';
 import { buildEnvironment, type Environment } from './environment';
 import { PostFx } from './post';
 import { ProjectileRenderer } from './ProjectileRenderer';
+import { landStone, StoneDebris, StoneDebrisMesh } from './StoneDebris';
+import { STONE_DEBRIS } from '../config/debris';
+import { terrainHeight } from './terrain';
 import { combatTarget, UnitView } from './UnitView';
 
 export const TEAM_TINT: Record<Team, number> = { player: 0x2f6fdb, enemy: 0xd23a32 };
@@ -30,6 +33,9 @@ export class GameRenderer {
   private readonly freeViews = new Map<string, UnitView[]>();
   private readonly baseViews = {} as Record<Team, BaseView>;
   private readonly projectileRenderer: ProjectileRenderer;
+  /** Sling stones that came down stay on the field (capped, config/debris.ts). */
+  readonly debris = new StoneDebris(terrainHeight);
+  private readonly debrisMesh: StoneDebrisMesh;
   readonly post: PostFx;
   private readonly env: Environment;
   private world: World | null = null;
@@ -50,6 +56,7 @@ export class GameRenderer {
 
     this.env = buildEnvironment(this.scene, this.assets, this.renderer);
     this.projectileRenderer = new ProjectileRenderer(this.scene);
+    this.debrisMesh = new StoneDebrisMesh(this.scene, STONE_DEBRIS.max + Math.max(8, Math.ceil(STONE_DEBRIS.max * 0.1)));
     this.rig = new CameraRig();
     this.rig.attachInput(this.renderer.domElement);
     this.post = new PostFx(this.renderer, this.scene, this.rig.camera);
@@ -61,6 +68,7 @@ export class GameRenderer {
     bus.on('hit', (e) => {
       if (e.targetKind === 'unit') this.views.get(e.targetId)?.triggerHit();
     });
+    bus.on('projectileImpact', (e) => void landStone(this.debris, e, this.world?.content.projectiles[e.defId], terrainHeight));
     // No hit/death particle effects yet (removed on request); the camp itself stays still on hits.
 
     window.addEventListener('resize', () => this.resize());
@@ -71,6 +79,7 @@ export class GameRenderer {
   setWorld(world: World): void {
     for (const view of this.views.values()) this.release(view);
     this.views.clear();
+    this.debris.clear();
     this.world = world;
     for (const team of TEAMS) {
       const base = world.bases[team];
@@ -99,6 +108,8 @@ export class GameRenderer {
     for (const view of this.views.values()) view.update(frozen ? 0 : dt, this.rig.camera);
     for (const team of TEAMS) this.baseViews[team].update(dt);
     this.projectileRenderer.update(world.projectiles);
+    this.debris.step(frozen ? 0 : dt);
+    this.debrisMesh.sync(this.debris);
     this.env.update(dt, this.rig.camera);
     this.post.render(dt);
   }

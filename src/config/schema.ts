@@ -64,6 +64,8 @@ export interface ProjectileDef {
   gravity: number;
   /** Mesh family the renderer uses. */
   shape: 'stone' | 'egg' | 'boulder';
+  /** Stays on the battlefield as debris after it comes down (config/debris.ts). */
+  persists?: boolean;
 }
 
 export interface TurretDef {
