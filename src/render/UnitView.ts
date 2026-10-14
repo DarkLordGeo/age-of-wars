@@ -1,6 +1,9 @@
 import { Box3, Group, Mesh, MeshBasicMaterial, PlaneGeometry, type AnimationClip, type Camera, type Object3D } from 'three';
+import type { Locomotion } from '../assets/AssetLibrary';
 import type { ClipName } from '../assets/contract';
+import { handoffAt, startSpeedAt, startTimeAt, type GaitLoop } from '../assets/startClip';
 import { GAME } from '../config/game';
+import { physicsOf } from '../config/physics';
 import { createRng } from '../sim/rng';
 import type { Unit } from '../sim/Unit';
 import { opposite, teamDir } from '../sim/types';
@@ -62,6 +65,44 @@ export function combatTarget(world: World, unit: Unit, drawnAt: (u: Unit) => { x
   return { x: world.bases[opposite(unit.team)].x, z: 0 };
 }
 
+/** Bounds of the stride-matching playback factor (a unit just starting off or stopping). */
+export const GAIT_SPEED = { min: 0.35, max: 1.5 };
+
+/**
+ * Loop clip and playback factor for a live unit. Moving units play their sim gait: `run` over
+ * distance and `walk` on short approaches when the model has both clips (a model without `run`
+ * has one locomotion loop, `walk`, for both gaits). The factor is ground speed over the speed the
+ * clip was authored for (`authored`, from the asset manifest; default: a run at the unit type's
+ * speed, a walk at its walking-gait speed), so the feet keep pace with the ground.
+ */
+export function gaitLoop(
+  unit: Unit,
+  hasRun: boolean,
+  authored: Partial<Record<GaitLoop, number>> = {},
+  groundSpeed = unit.vel,
+): { clip: 'idle' | GaitLoop; speed: number } {
+  if (!unit.moving) return { clip: 'idle', speed: 1 };
+  const walking = hasRun && unit.gait === 'walk';
+  const clip = hasRun && !walking ? 'run' : 'walk';
+  const ref = authored[clip] ?? (walking ? (physicsOf(unit.def.id).walk?.speed ?? unit.def.speed) : unit.def.speed);
+  return { clip, speed: Math.min(GAIT_SPEED.max, Math.max(GAIT_SPEED.min, groundSpeed / ref)) };
+}
+
+/**
+ * Ground speed of a unit drawn on the winding footpath: the lane speed times the path's length
+ * per lane metre (a bend is longer than the straight lane it follows).
+ */
+export function pathSpeed(laneSpeed: number, x: number): number {
+  const s = pathSlope(x);
+  return laneSpeed * Math.sqrt(1 + s * s);
+}
+
+/**
+ * The start clip hands over to its loop early if the unit moves faster than this many times the
+ * clip's own speed (it would have to be fast-forwarded), e.g. when the gait turns into a run.
+ */
+export const START_MAX_RATE = 2.5;
+
 export interface UnitViewOptions {
   variants?: ReadonlyMap<ClipName, readonly AnimationClip[]>;
   /**
@@ -71,6 +112,8 @@ export interface UnitViewOptions {
   strike?: number;
   /** Called when a strike-synced swing starts (swing whoosh). */
   onSwing?: (unit: Unit) => void;
+  /** Authored gait speeds and the prepared `start` clip (AssetLibrary.locomotionFor). */
+  locomotion?: Locomotion;
 }
 
 /**
@@ -101,6 +144,9 @@ export class UnitView {
   private target: { x: number; z: number } | null = null;
   /** Present only for models that ship contract clips. */
   readonly animator: ModelAnimator | null;
+  /** Setting off: metres moved since the start clip began (null: not starting). */
+  private startDist: number | null = null;
+  private lastX = 0;
 
   constructor(
     readonly poolKey: string,
@@ -133,6 +179,8 @@ export class UnitView {
     this.knock = 0;
     this.swingArmed = true;
     this.target = null;
+    this.startDist = null;
+    this.lastX = unit.x;
     this.yaw = Number.NaN; // snap to the first heading
     // Stable per-unit variation (seeded by the unit id): units of one type never move in lockstep.
     const rng = createRng(unit.id * 9973 + 17);
@@ -195,8 +243,7 @@ export class UnitView {
       this.animator.update(dt);
       this.syncSwing();
       if (u.state === 'dead') this.animator.playOnce('death');
-      else if (u.moving) this.animator.playLoop('walk');
-      else this.animator.playLoop('idle');
+      else this.playGait(this.animator);
     } else {
       this.animateProcedurally(dt, dir);
     }
@@ -264,6 +311,44 @@ export class UnitView {
       this.swingArmed = false;
       if (this.animator.playOnce('attack') && melee) this.opts.onSwing?.(u);
     }
+  }
+
+  /**
+   * Locomotion: idle, run or walk from the sim (gaitLoop). Setting off from a standstill into a
+   * walk plays the model's `start` clip (Start Walking), its time driven by the distance the unit
+   * has actually moved so planted feet stay put, then hands over to the walk (or run) loop at the
+   * phase whose leg pose matches, with the same foot forward.
+   */
+  private playGait(animator: ModelAnimator): void {
+    const u = this.unit;
+    // Distance and speed along the drawn path, which is what the feet have to cover.
+    const x = this.root.position.x;
+    const moved = pathSpeed(Math.abs(u.x - this.lastX), x);
+    this.lastX = u.x;
+    const loco = this.opts.locomotion ?? {};
+    const want = gaitLoop(u, animator.has('run'), loco.gaitSpeed, pathSpeed(u.vel, x));
+    const start = loco.start;
+    if (start && want.clip === 'walk' && this.startDist === null && (animator.loop === 'idle' || animator.loop === null)) {
+      this.startDist = 0;
+      animator.playLoop('start', 0);
+    }
+    if (this.startDist !== null) {
+      if (!start || want.clip === 'idle' || animator.loop !== 'start') {
+        this.startDist = null; // stopped, or a one-shot took over
+      } else {
+        this.startDist += moved;
+        const t = startTimeAt(start, this.startDist);
+        const outrun = t > 0.2 && pathSpeed(u.vel, x) > START_MAX_RATE * Math.max(0.05, startSpeedAt(start, t));
+        if (t < start.exit && want.clip === 'walk' && !outrun) {
+          animator.scrub(t);
+          return;
+        }
+        this.startDist = null;
+        animator.playLoop(want.clip, handoffAt(start, want.clip, t)?.phase);
+      }
+    }
+    animator.playLoop(want.clip);
+    animator.setLoopSpeed(want.speed);
   }
 
   /** Stand-in animation for placeholder models that have no clips. */

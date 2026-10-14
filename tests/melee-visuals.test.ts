@@ -82,7 +82,9 @@ describe('melee presentation (render only)', () => {
     });
     assert.ok(strikeTimes.length >= 3);
     for (const t of strikeTimes) assert.ok(Math.abs(t - STRIKE) < 2.5 * DT, `clip at ${t.toFixed(3)} s when the hit landed`);
-    assert.equal(swings, strikeTimes.length, 'one whoosh per blow');
+    // One whoosh per blow, plus possibly one swing still in the air when the run stops.
+    const inFlight = va.animator!.playing === 'attack' && va.animator!.time < STRIKE ? 1 : 0;
+    assert.equal(swings, strikeTimes.length + inFlight, 'one whoosh per blow');
   });
 
   it('identical units are desynchronised, reproducibly (seeded by unit id)', async () => {

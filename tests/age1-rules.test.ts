@@ -70,10 +70,12 @@ describe('Age 1 lane rules', () => {
     w.spawnUnit('enemy', 'dino', 0).health = 1e6;
     const a = w.spawnUnit('player', 'clubman', -10);
     const b = w.spawnUnit('player', 'clubman', -14);
+    a.health = b.health = 1e6; // both stay in the lane for the whole check
     for (let i = 0; i < 600; i++) {
       w.step(GAME.fixedStep);
       w.drainEvents(() => undefined);
       assert.ok(b.x <= a.x - a.def.length + 1e-6, `b ${b.x} passed a ${a.x}`);
+      assert.ok(b.x <= a.x - a.def.length - GAME.minUnitGap + 1e-6, 'keeps the gap (braking never overshoots)');
     }
   });
 

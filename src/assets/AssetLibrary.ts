@@ -2,6 +2,7 @@ import { AnimationClip, type Material, type Mesh, type MeshStandardMaterial, typ
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { clipVariants, indexClips, TEAM_COLOR_MATERIAL, validateModel, type ClipName } from './contract';
+import { prepareStartClip, type GaitLoop, type StartClip } from './startClip';
 
 export interface AssetSpec {
   /** Path to a .glb under /public (e.g. '/models/soldier.glb'). When absent or failing, the placeholder is used. */
@@ -24,6 +25,18 @@ export interface AssetSpec {
   partial?: Partial<Record<ClipName, RegExp>>;
   /** Runs once on the loaded GLB scene before it is used (e.g. auto-rigging a static model). */
   prepare?: (scene: Object3D) => Object3D;
+  /**
+   * Ground speed (m/s) each in-place locomotion loop is authored for at playback rate 1 (its
+   * stride length / cycle time, measured from the source clip's root travel). The renderer
+   * scales the loop by actual speed / this, so feet don't slide. Default: the unit's speed.
+   */
+  gaitSpeed?: Partial<Record<GaitLoop, number>>;
+}
+
+/** Locomotion data of a loaded model, for the unit views. */
+export interface Locomotion {
+  gaitSpeed?: Partial<Record<GaitLoop, number>>;
+  start?: StartClip;
 }
 
 /** The part of a parsed glTF the library needs (lets tests feed parsed data directly). */
@@ -36,6 +49,7 @@ interface LoadedModel {
   scene: Object3D;
   clips: ReadonlyMap<ClipName, AnimationClip>;
   variants: ReadonlyMap<ClipName, readonly AnimationClip[]>;
+  start?: StartClip;
 }
 
 const NO_CLIPS: ReadonlyMap<ClipName, AnimationClip> = new Map();
@@ -91,13 +105,23 @@ export class AssetLibrary {
     const scene = spec.prepare ? spec.prepare(gltf.scene) : gltf.scene;
     const animations = gltf.animations.map((clip) => partialClip(clip, spec.partial));
     const clips = indexClips(animations);
+    let variants = clipVariants(animations);
+    // A start clip plays in place, driven by distance (its root travel is taken out here).
+    const rawStart = clips.get('start');
+    const start = rawStart ? prepareStartClip(scene, rawStart, { walk: clips.get('walk'), run: clips.get('run') }) : null;
+    if (start) {
+      clips.set('start', start.clip);
+      variants = new Map(variants).set('start', [start.clip]);
+    } else if (rawStart) {
+      clips.delete('start'); // no root travel to drive it by: unusable
+    }
     const problems = validateModel(scene, clips, {
       expectedHeight: spec.expectedHeight,
       // unit-style assets are animated (prepared models animate procedurally); scenery is not
       requireClips: spec.expectedHeight !== undefined && !spec.prepare,
     });
     if (problems.length) console.warn(`[assets] "${key}" does not meet the model contract:\n - ${problems.join('\n - ')}`);
-    this.loaded.set(key, { scene, clips, variants: clipVariants(animations) });
+    this.loaded.set(key, { scene, clips, variants, start: start ?? undefined });
     return problems;
   }
 
@@ -122,6 +146,13 @@ export class AssetLibrary {
   /** Strike time of `key`'s attack clip, when its GLB (not the placeholder) is loaded. */
   strikeTimeFor(key: string): number | undefined {
     return this.loaded.has(key) ? this.specs.get(key)?.strike : undefined;
+  }
+
+  /** Authored gait speeds and the prepared start clip of `key` (empty for placeholders). */
+  locomotionFor(key: string): Locomotion {
+    const loaded = this.loaded.get(key);
+    if (!loaded) return {};
+    return { gaitSpeed: this.specs.get(key)?.gaitSpeed, start: loaded.start };
   }
 
   /** Every variant of each clip for `key` ("death", "death_2", ...); empty for placeholders. */
