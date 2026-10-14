@@ -35,6 +35,7 @@ Names are case-insensitive. Blender's `Armature|walk` style also works (text aft
 | `run` *(optional)* | loops | the long-distance gait; with it, `walk` is the walking gait for short approaches and queueing |
 | `start` *(optional)* | driven by distance | setting off from a standstill into a walk; export it **with** its root (hips) travel, the game takes the travel out and plays the clip by how far the unit has moved, then hands over to `walk` at the best-matching pose |
 | `hit` *(optional)* | once | a short flinch when struck |
+| `melee` *(optional)* | once | the hand-to-hand blow of a unit whose `attack` is ranged (Slingshot Man: Mixamo "Fist Fight A"); give its hit time as `meleeStrike` in the manifest. Without it, melee plays `attack` |
 
 Locomotion loops are in place (no root travel) and must loop seamlessly (last frame = first pose,
 a whole number of frames). Give the ground speed each loop is authored for (stride length / cycle

@@ -18,6 +18,10 @@ import { excludeFromAO } from './post';
 const LUNGE_TIME = 0.32;
 const barBg = new MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.6 });
 const barFg = new MeshBasicMaterial({ color: 0x4ade80, depthTest: false });
+/** Fill of the bar of the unit under the pointer: red, readable on grass, dirt and rock. */
+const barHover = new MeshBasicMaterial({ color: 0xe53935, depthTest: false });
+/** The hovered unit's bar is drawn a little larger. */
+const HOVER_BAR_SCALE = 1.2;
 const barGeo = new PlaneGeometry(1, 1);
 const BAR_W = 1.2;
 const BAR_H = 0.14;
@@ -112,6 +116,8 @@ export interface UnitViewOptions {
    * the sim applies the damage, so the hit and the strike frame coincide.
    */
   strike?: number;
+  /** Strike time of the `melee` clip (hand-to-hand blow of a ranged unit); with it, melee plays `melee`. */
+  meleeStrike?: number;
   /** Called when a strike-synced swing starts (swing whoosh). */
   onSwing?: (unit: Unit) => void;
   /** Authored gait speeds and the prepared `start` clip (AssetLibrary.locomotionFor). */
@@ -141,6 +147,8 @@ export class UnitView {
   private swingRate = 1;
   /** True until the swing for the current melee timer cycle has started. */
   private swingArmed = true;
+  /** Which routine the last swing belonged to; a switch (sling -> fists) re-arms the swing. */
+  private swingMode: 'melee' | 'ranged' = 'ranged';
   /** Current heading (model yaw) and where to look while fighting (null: face the way it walks). */
   private yaw = 0;
   private target: { x: number; z: number } | null = null;
@@ -151,6 +159,10 @@ export class UnitView {
   /** Setting off: metres moved since the start clip began (null: not starting). */
   private startDist: number | null = null;
   private lastX = 0;
+  /** Under the pointer (GameRenderer): its health bar shows, in red. */
+  private hovered = false;
+  /** Model extents at rest (local): the box the pointer can hover. */
+  private readonly body: Box3;
 
   constructor(
     readonly poolKey: string,
@@ -160,7 +172,8 @@ export class UnitView {
   ) {
     this.animator = clips.size > 0 ? new ModelAnimator(model, clips, opts.variants) : null;
     model.updateMatrixWorld(true);
-    this.reach = Math.max(0, new Box3().setFromObject(model).max.x);
+    this.body = new Box3().setFromObject(model);
+    this.reach = Math.max(0, this.body.max.x);
     this.root.add(model);
     const bg = new Mesh(barGeo, barBg);
     bg.scale.set(BAR_W, BAR_H, 1);
@@ -182,6 +195,8 @@ export class UnitView {
     this.engage = 0;
     this.knock = 0;
     this.swingArmed = true;
+    this.swingMode = 'ranged';
+    this.hovered = false;
     this.target = null;
     this.startDist = null;
     this.lastX = unit.x;
@@ -264,8 +279,11 @@ export class UnitView {
       return;
     }
 
-    const frac = Math.max(0, u.health / u.maxHealth);
-    this.bar.visible = frac < 1;
+    const frac = Math.min(1, Math.max(0, u.health / u.maxHealth)); // (also when health exceeds max)
+    // Shown when damaged (green), and always for the unit under the pointer (red, larger).
+    this.bar.visible = this.hovered || frac < 1;
+    this.fill.material = this.hovered ? barHover : barFg;
+    this.bar.scale.setScalar(this.hovered ? HOVER_BAR_SCALE : 1);
     if (this.bar.visible) {
       this.fill.scale.set(BAR_W * frac, BAR_H, 1);
       this.fill.position.x = -(BAR_W / 2) * (1 - frac);
@@ -306,9 +324,17 @@ export class UnitView {
    */
   private syncSwing(): void {
     const u = this.unit;
-    const strike = this.opts.strike;
     const melee = u.meleeTimer !== null;
+    // A ranged unit fighting hand to hand throws its own blow (`melee` clip), if the model has one.
+    const fists = melee && !!u.def.ranged && this.opts.meleeStrike !== undefined && !!this.animator?.has('melee');
+    const strike = fists ? this.opts.meleeStrike : this.opts.strike;
+    const clip = fists ? 'melee' : 'attack';
     const timer = melee ? u.meleeTimer : u.def.ranged ? u.rangedTimer : null;
+    const mode = melee ? 'melee' : 'ranged';
+    if (mode !== this.swingMode) {
+      this.swingMode = mode;
+      this.swingArmed = true; // a new routine: its first blow gets its own swing
+    }
     if (strike === undefined || !this.animator || u.state === 'dead' || timer === null) {
       this.swingArmed = true;
       return;
@@ -318,7 +344,7 @@ export class UnitView {
       this.swingArmed = true;
     } else if (this.swingArmed) {
       this.swingArmed = false;
-      if (this.animator.playOnce('attack') && melee) this.opts.onSwing?.(u);
+      if (this.animator.playOnce(clip) && melee) this.opts.onSwing?.(u);
     }
   }
 
@@ -377,6 +403,30 @@ export class UnitView {
     } else if (iv.update(dt, calm && animator.playing === 'idle')) {
       animator.playOnce(clip);
     }
+  }
+
+  /** Pointer over this unit or not (GameRenderer picks it each frame). */
+  setHovered(on: boolean): void {
+    this.hovered = on;
+  }
+
+  /** What its health bar shows now (for tests and debugging). */
+  get barState(): { visible: boolean; red: boolean; frac: number } {
+    return { visible: this.bar.visible, red: this.fill.material === barHover, frac: this.fill.scale.x / BAR_W };
+  }
+
+  get id(): number {
+    return this.unit.id;
+  }
+
+  /** World box the pointer can hover (model bounds, at least shoulder-wide); null once dead. */
+  hoverBox(out: Box3): Box3 | null {
+    if (!this.unit || this.unit.state === 'dead' || !this.root.visible) return null;
+    const p = this.root.position;
+    const half = Math.max(0.35, Math.abs(this.body.min.x), Math.abs(this.body.max.x), Math.abs(this.body.min.z), Math.abs(this.body.max.z));
+    out.min.set(p.x - half, p.y, p.z - half);
+    out.max.set(p.x + half, p.y + Math.max(1, this.body.max.y), p.z + half);
+    return out;
   }
 
   /** Stand-in animation for placeholder models that have no clips. */

@@ -28,7 +28,8 @@ export type SimEvent =
   /** Where a projectile stopped (y: height above the ground; a miss on the ground has y = 0), its velocity then and its flight time. */
   | { type: 'projectileImpact'; projectileId: number; defId: string; hit: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number }
   | { type: 'hit'; targetKind: 'unit' | 'base'; targetId: number; team: Team; damage: number; x: number; y: number; z: number }
-  | { type: 'death'; unitId: number; team: Team; killerTeam: Team }
+  /** `gold`: the reward actually credited to the killer team for this death. */
+  | { type: 'death'; unitId: number; team: Team; killerTeam: Team; gold: number }
   | { type: 'baseDamage'; team: Team; damage: number; health: number }
   | { type: 'turretBuilt'; team: Team; slot: number; turretId: string }
   | { type: 'turretSold'; team: Team; slot: number; turretId: string; refund: number }
