@@ -7,7 +7,15 @@ const FADE = 0.12;
  * One-shots only interrupt one-shots of equal or lower priority: a flinch never cuts a swing
  * short, and nothing interrupts a death.
  */
-const PRIORITY: Partial<Record<ClipName, number>> = { hit: 1, attack: 2, death: 3 };
+const PRIORITY: Partial<Record<ClipName, number>> = { warmup: 0, hit: 1, attack: 2, death: 3 };
+
+/**
+ * Idle variations: full-body one-shots that give way to everything. Any one-shot overrides them
+ * (priority 0) and any loop other than `idle` cuts them off, blending out over their fade.
+ */
+const INTERRUPTIBLE: ReadonlySet<ClipName> = new Set<ClipName>(['warmup']);
+/** Slower blends in and out of these clips (long, whole-body motions). */
+const FADES: Partial<Record<string, number>> = { warmup: 0.3 };
 
 /** Locomotion cycles: switching between them keeps the stride's phase (same foot forward). */
 const GAITS: ReadonlySet<ClipName> = new Set<ClipName>(['walk', 'run']);
@@ -135,10 +143,21 @@ export class ModelAnimator {
    * `phase` (0..1) starts it at that point of its cycle (e.g. matched to the outgoing pose).
    */
   playLoop(name: ClipName, phase?: number): void {
+    if (this.shotName && INTERRUPTIBLE.has(this.shotName) && name !== 'idle') this.cancel(this.shotName);
     if ((this.shotName && !this.mask) || this.loopName === name) return;
     const take = this.actions.get(name)?.[0];
     if (!take) return;
     this.swapLoop(this.mask ? this.complement(name, take) : take, name, false, phase);
+  }
+
+  /** Stop one-shot `name` if it is running, blending it out; the next loop takes over. */
+  cancel(name: ClipName): void {
+    if (this.shotName !== name || !this.shotAction) return;
+    this.shotAction.fadeOut(FADES[name] ?? FADE);
+    this.shotName = null;
+    this.shotAction = null;
+    this.mask = null;
+    this.anchors = [];
   }
 
   /** Name of the running loop (null while a full-body one-shot holds the model). */
@@ -167,13 +186,14 @@ export class ModelAnimator {
     const partial = this.loopAction !== null && this.loopName !== null && nodes.size < this.loopNodes.size &&
       [...nodes].every((n) => this.loopNodes.has(n));
 
-    this.shotAction?.fadeOut(FADE);
+    const fade = Math.max(FADES[name] ?? FADE, (this.shotName && FADES[this.shotName]) || FADE);
+    this.shotAction?.fadeOut(fade);
     this.releaseLingering(next);
     next.reset();
     next.setLoop(LoopOnce, 1);
     next.clampWhenFinished = true;
     next.timeScale = name === 'attack' ? this.attackRate : 1;
-    next.fadeIn(this.loopAction || this.shotAction ? FADE : 0).play();
+    next.fadeIn(this.loopAction || this.shotAction ? fade : 0).play();
     if (partial) {
       const wasMasked = this.mask !== null;
       this.mask = nodes;
@@ -181,7 +201,7 @@ export class ModelAnimator {
       if (!wasMasked) this.swapLoop(this.complement(this.loopName!, this.actions.get(this.loopName!)![0]!), this.loopName!, true);
     } else {
       this.mask = null;
-      this.loopAction?.fadeOut(FADE);
+      this.loopAction?.fadeOut(fade);
       this.loopAction = null;
       this.loopName = null;
     }
@@ -236,7 +256,7 @@ export class ModelAnimator {
   }
 
   private releaseLingering(next: AnimationAction): void {
-    if (this.lingering && this.lingering !== next) this.lingering.fadeOut(FADE);
+    if (this.lingering && this.lingering !== next) this.lingering.fadeOut(FADES[this.lingering.getClip().name] ?? FADE);
     this.lingering = null;
   }
 

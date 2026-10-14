@@ -3,6 +3,7 @@ import type { Locomotion } from '../assets/AssetLibrary';
 import type { ClipName } from '../assets/contract';
 import { handoffAt, startSpeedAt, startTimeAt, type GaitLoop } from '../assets/startClip';
 import { GAME } from '../config/game';
+import { IDLE_VARIATIONS } from '../config/idle';
 import { physicsOf } from '../config/physics';
 import { createRng } from '../sim/rng';
 import type { Unit } from '../sim/Unit';
@@ -10,6 +11,7 @@ import { opposite, teamDir } from '../sim/types';
 import type { World } from '../sim/World';
 import { lowestPoint } from './grounding';
 import { pathCenterZ, pathSlope, terrainHeight } from './terrain';
+import { IdleScheduler } from './IdleScheduler';
 import { ModelAnimator } from './ModelAnimator';
 import { excludeFromAO } from './post';
 
@@ -144,6 +146,8 @@ export class UnitView {
   private target: { x: number; z: number } | null = null;
   /** Present only for models that ship contract clips. */
   readonly animator: ModelAnimator | null;
+  /** When this unit plays its idle variation (null: its type has none). */
+  private idleVariation: IdleScheduler | null = null;
   /** Setting off: metres moved since the start clip began (null: not starting). */
   private startDist: number | null = null;
   private lastX = 0;
@@ -181,6 +185,8 @@ export class UnitView {
     this.target = null;
     this.startDist = null;
     this.lastX = unit.x;
+    const iv = IDLE_VARIATIONS[unit.def.id];
+    this.idleVariation = iv && this.animator?.has(iv.clip) ? new IdleScheduler(iv, createRng(unit.id * 7919 + 3)) : null;
     this.yaw = Number.NaN; // snap to the first heading
     // Stable per-unit variation (seeded by the unit id): units of one type never move in lockstep.
     const rng = createRng(unit.id * 9973 + 17);
@@ -243,7 +249,10 @@ export class UnitView {
       this.animator.update(dt);
       this.syncSwing();
       if (u.state === 'dead') this.animator.playOnce('death');
-      else this.playGait(this.animator);
+      else {
+        this.playGait(this.animator);
+        this.playIdleVariation(this.animator, dt);
+      }
     } else {
       this.animateProcedurally(dt, dir);
     }
@@ -349,6 +358,25 @@ export class UnitView {
     }
     animator.playLoop(want.clip);
     animator.setLoopSpeed(want.speed);
+  }
+
+  /**
+   * The occasional idle variation (config/idle.ts): only while the unit stands idle out of combat
+   * with nothing else playing; stopped (blended out) as soon as that no longer holds. Moving,
+   * attacking and dying also take over by themselves (ModelAnimator priorities).
+   */
+  private playIdleVariation(animator: ModelAnimator, dt: number): void {
+    const iv = this.idleVariation;
+    if (!iv) return;
+    const u = this.unit;
+    const calm = u.state === 'waiting' && !u.moving;
+    const clip = iv.cfg.clip;
+    if (animator.playing === clip) {
+      if (!calm) animator.cancel(clip);
+      iv.update(dt, false);
+    } else if (iv.update(dt, calm && animator.playing === 'idle')) {
+      animator.playOnce(clip);
+    }
   }
 
   /** Stand-in animation for placeholder models that have no clips. */
